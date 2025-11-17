@@ -8,6 +8,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 abstract class ApiController extends Controller
 {
@@ -85,11 +88,24 @@ abstract class ApiController extends Controller
     }
 
     /**
+     * Override this method to control who can request all records
+     */
+    protected function canRequestAllRecords(Request $request): bool
+    {
+        // By default, deny fetching all records for security
+        // Override in child controllers with proper authorization
+        return false;
+    }
+
+    /**
      * Common search and filter method for index endpoints
      */
     protected function handleIndexRequest(Request $request, ?Builder $query = null): JsonResponse
     {
         try {
+            // Validate request parameters
+            $this->validateRequestParameters($request);
+
             // Use provided query or create new one from model
             $baseQuery = $query ?? $this->getBaseIndexQuery($request);
 
@@ -116,13 +132,58 @@ abstract class ApiController extends Controller
                 $this->getIndexMeta($results, $request)
             );
 
+        } catch (ValidationException $e) {
+            return $this->validationError('Validation failed', $e->errors());
         } catch (\Exception $e) {
-            return $this->error(
-                'Failed to retrieve data: ' . $e->getMessage(),
-                null,
-                500
-            );
+            // Log the full error for debugging
+            Log::error('Failed to retrieve data in ' . static::class, [
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request' => $request->except(['password', 'token']), // Exclude sensitive data
+            ]);
+
+            // Return sanitized error message to user
+            $message = config('app.debug')
+                ? 'Failed to retrieve data: ' . $e->getMessage()
+                : 'Failed to retrieve data. Please try again later.';
+
+            return $this->error($message, null, 500);
         }
+    }
+
+    /**
+     * Validate request parameters for security
+     */
+    protected function validateRequestParameters(Request $request): void
+    {
+        $rules = [
+            'per_page' => 'nullable|integer|min:1|max:' . $this->maxPerPage,
+            'page' => 'nullable|integer|min:1',
+            'sort_by' => 'nullable|string|max:50',
+            'sort_direction' => 'nullable|in:asc,desc',
+            'search' => 'nullable|string|max:255',
+            'all' => 'nullable|boolean',
+        ];
+
+        $validator = Validator::make($request->all(), $rules);
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+    }
+
+    /**
+     * Sanitize search term to prevent SQL injection
+     */
+    protected function sanitizeSearchTerm(string $searchTerm): string
+    {
+        // Escape special LIKE characters
+        // Laravel's parameter binding protects against SQL injection,
+        // but we escape LIKE wildcards to prevent unexpected behavior
+        $searchTerm = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $searchTerm);
+
+        // Limit search term length as an additional security measure
+        return mb_substr($searchTerm, 0, 255);
     }
 
     /**
@@ -136,12 +197,16 @@ abstract class ApiController extends Controller
             return $query;
         }
 
+        // Sanitize search term
+        $searchTerm = $this->sanitizeSearchTerm($searchTerm);
+
         return $query->where(function (Builder $q) use ($searchTerm) {
             foreach ($this->searchableFields as $field) {
                 // Handle relationship searches (e.g., 'user.name')
                 if (str_contains($field, '.')) {
                     $this->applyRelationSearch($q, $field, $searchTerm);
                 } else {
+                    // Laravel's query builder uses parameter binding for LIKE queries
                     $q->orWhere($field, 'LIKE', "%{$searchTerm}%");
                 }
             }
@@ -156,8 +221,22 @@ abstract class ApiController extends Controller
         [$relation, $column] = explode('.', $field, 2);
 
         $query->orWhereHas($relation, function (Builder $q) use ($column, $searchTerm) {
+            // Laravel's query builder uses parameter binding
             $q->where($column, 'LIKE', "%{$searchTerm}%");
         });
+    }
+
+    /**
+     * Validate if a date string is valid
+     */
+    protected function isValidDate(string $date): bool
+    {
+        try {
+            $parsed = \Carbon\Carbon::parse($date);
+            return true;
+        } catch (\Exception $e) {
+            return false;
+        }
     }
 
     /**
@@ -165,6 +244,11 @@ abstract class ApiController extends Controller
      */
     protected function applyDateFilter(Builder $query, string $key, $value): void
     {
+        // Validate date format before using in query
+        if (!$this->isValidDate($value)) {
+            return;
+        }
+
         // Handle created_at_from and created_at_to
         if (str_ends_with($key, '_from') && $value) {
             $column = str_replace('_from', '', $key);
@@ -192,20 +276,34 @@ abstract class ApiController extends Controller
             // Check if it's a range filter (min/max)
             if (isset($value['min']) && isset($value['max'])) {
                 $query->whereBetween($key, [$value['min'], $value['max']]);
-            } else {
-                $query->whereIn($key, $value);
+                return;
             }
+
+            // Support partial range filters
+            if (isset($value['min'])) {
+                $query->where($key, '>=', $value['min']);
+                return;
+            }
+
+            if (isset($value['max'])) {
+                $query->where($key, '<=', $value['max']);
+                return;
+            }
+
+            // Default: IN query
+            $query->whereIn($key, $value);
             return;
         }
 
-        // Handle boolean filters
-        if ($value === 'true' || $value === 'false') {
-            $query->where($key, $value === 'true');
+        // Handle boolean filters - support multiple formats
+        if (in_array($value, ['true', 'false', '1', '0', 1, 0, true, false], true)) {
+            $boolValue = in_array($value, ['true', '1', 1, true], true);
+            $query->where($key, $boolValue);
             return;
         }
 
-        // Handle null values
-        if ($value === 'null' || $value === '') {
+        // Handle null values - separate from empty string
+        if ($value === 'null') {
             $query->whereNull($key);
             return;
         }
@@ -226,34 +324,58 @@ abstract class ApiController extends Controller
     }
 
     /**
+     * Check if a field is filterable
+     */
+    protected function isFilterable(string $field): bool
+    {
+        // If no filterable fields defined, deny all for security
+        if (empty($this->filterableFields)) {
+            return false;
+        }
+
+        // Remove suffixes like _from, _to, [min], [max] for validation
+        $baseField = preg_replace('/(_from|_to)$/', '', $field);
+        $baseField = preg_replace('/\[.*\]/', '', $baseField);
+
+        return in_array($baseField, $this->filterableFields, true);
+    }
+
+    /**
      * Apply filters to query
      */
     protected function applyFilters(Builder $query, Request $request): Builder
     {
-        $filters = $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page']);
+        $filters = $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page', 'all']);
 
         foreach ($filters as $key => $value) {
-            if ($value === null || $value === '') {
+            if ($value === null) {
                 continue;
             }
 
-            // Check if field is filterable
-            if (!empty($this->filterableFields)) {
-                // For date range filters, check the base column name
-                $baseKey = $key;
-                if (str_ends_with($key, '_from') || str_ends_with($key, '_to')) {
-                    $baseKey = str_replace(['_from', '_to'], '', $key);
-                }
-
-                if (!in_array($baseKey, $this->filterableFields) && !in_array($key, $this->filterableFields)) {
-                    continue;
-                }
+            // Check if field is filterable - security check
+            if (!$this->isFilterable($key)) {
+                continue;
             }
 
             $this->applyFilter($query, $key, $value);
         }
 
         return $query;
+    }
+
+    /**
+     * Validate if a column is allowed for sorting
+     */
+    protected function validateSortColumn(string $column): bool
+    {
+        // Whitelist approach: build list of allowed columns
+        $allowedColumns = array_unique(array_merge(
+            $this->filterableFields,
+            $this->searchableFields,
+            ['id', 'created_at', 'updated_at']
+        ));
+
+        return in_array($column, $allowedColumns, true);
     }
 
     /**
@@ -269,6 +391,19 @@ abstract class ApiController extends Controller
             ? $sortDirection
             : $this->defaultDirection;
 
+        // Validate sort column to prevent SQL injection
+        if (!$this->validateSortColumn($sortBy)) {
+            // Log suspicious activity
+            Log::warning('Invalid sort column attempted', [
+                'column' => $sortBy,
+                'ip' => $request->ip(),
+                'controller' => static::class,
+            ]);
+
+            // Fall back to default sort
+            $sortBy = $this->defaultSort;
+        }
+
         return $query->orderBy($sortBy, $sortDirection);
     }
 
@@ -277,14 +412,23 @@ abstract class ApiController extends Controller
      */
     protected function paginateResults(Builder $query, Request $request): LengthAwarePaginator|Collection
     {
-        $perPage = $this->getPerPage($request);
+        // Check for explicit 'all' request with authorization
+        if ($request->boolean('all', false)) {
+            if ($this->canRequestAllRecords($request)) {
+                return $query->get();
+            }
 
-        // If per_page was not provided in the request, return all results
-        if (!$request->has('per_page')) {
-            return $query->get();
+            // If not authorized, log and fall through to pagination
+            Log::warning('Unauthorized attempt to fetch all records', [
+                'ip' => $request->ip(),
+                'controller' => static::class,
+            ]);
         }
 
+        // Always paginate for security (prevent DoS attacks)
+        $perPage = $this->getPerPage($request);
         $page = $request->get('page', 1);
+
         return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
@@ -355,7 +499,7 @@ abstract class ApiController extends Controller
                     'search' => $request->get('search'),
                     'sort_by' => $request->get('sort_by', $this->defaultSort),
                     'sort_direction' => $request->get('sort_direction', $this->defaultDirection),
-                    'applied_filters' => $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page']),
+                    'applied_filters' => $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page', 'all']),
                 ]
             ];
         }
@@ -366,7 +510,7 @@ abstract class ApiController extends Controller
                 'search' => $request->get('search'),
                 'sort_by' => $request->get('sort_by', $this->defaultSort),
                 'sort_direction' => $request->get('sort_direction', $this->defaultDirection),
-                'applied_filters' => $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page']),
+                'applied_filters' => $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page', 'all']),
             ]
         ];
     }

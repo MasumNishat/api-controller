@@ -14,8 +14,8 @@ class ErrorResponse
         ?array $meta = null
     ): JsonResponse {
         // Sanitize SQL error messages if configured
-        if (config('api-controller.sanitize_sql_errors', true) && str_contains($message, 'SQLSTATE')) {
-            $message = 'Error with your provided data.';
+        if (config('api-controller.sanitize_sql_errors', true)) {
+            $message = self::sanitizeSqlError($message);
         }
 
         return ApiResponse::make()
@@ -26,6 +26,50 @@ class ErrorResponse
             ->meta($meta)
             ->statusCode($statusCode)
             ->toJsonResponse();
+    }
+
+    /**
+     * Sanitize SQL error messages to prevent information disclosure
+     */
+    protected static function sanitizeSqlError(string $message): string
+    {
+        // List of SQL-related strings that indicate database errors
+        $sqlIndicators = [
+            'SQLSTATE',
+            'Syntax error',
+            'syntax error',
+            'Table',
+            'table',
+            'Column',
+            'column',
+            'database',
+            'Database',
+            'Query',
+            'query',
+            'SQL',
+            'Sql',
+            'Integrity constraint',
+            'integrity constraint',
+            'foreign key',
+            'Foreign key',
+            'Duplicate entry',
+            'duplicate entry',
+            'Unknown column',
+            'unknown column',
+            'doesn\'t exist',
+            'does not exist',
+            'constraint',
+            'Constraint',
+        ];
+
+        // Check if message contains any SQL indicators (case-insensitive)
+        foreach ($sqlIndicators as $indicator) {
+            if (stripos($message, $indicator) !== false) {
+                return 'Error processing your request. Please check your input and try again.';
+            }
+        }
+
+        return $message;
     }
 
     public static function validation(

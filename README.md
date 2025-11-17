@@ -1,30 +1,46 @@
-# Laravel API Controller Package
+# Laravel API Controller
 
-A powerful Laravel package providing a feature-rich base API controller with dynamic filtering, searching, sorting, pagination, and standardized JSON responses. Build RESTful APIs faster with consistent response formatting and advanced query capabilities.
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/masum/laravel-api-controller.svg?style=flat-square)](https://packagist.org/packages/masum/laravel-api-controller)
+[![Total Downloads](https://img.shields.io/packagist/dt/masum/laravel-api-controller.svg?style=flat-square)](https://packagist.org/packages/masum/laravel-api-controller)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/masum/laravel-api-controller/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/masum/laravel-api-controller/actions?query=workflow%3Atests+branch%3Amain)
+[![GitHub Code Quality Action Status](https://img.shields.io/github/actions/workflow/status/masum/laravel-api-controller/code-quality.yml?branch=main&label=code%20quality&style=flat-square)](https://github.com/masum/laravel-api-controller/actions?query=workflow%3Acode-quality+branch%3Amain)
+[![PHPStan Level](https://img.shields.io/badge/PHPStan-level%206-brightgreen.svg?style=flat-square)](https://phpstan.org/)
+[![License](https://img.shields.io/packagist/l/masum/laravel-api-controller.svg?style=flat-square)](https://packagist.org/packages/masum/laravel-api-controller)
+[![PHP Version](https://img.shields.io/packagist/php-v/masum/laravel-api-controller.svg?style=flat-square)](https://packagist.org/packages/masum/laravel-api-controller)
+
+A powerful, secure, and feature-rich Laravel package providing a base API controller with dynamic filtering, searching, sorting, pagination, and standardized JSON responses. Build RESTful APIs faster with consistent response formatting, advanced query capabilities, and enterprise-grade security.
 
 ## Features
 
-- **Dynamic Filtering**: Filter by any field with support for:
-  - Exact matches
-  - Array values (IN queries)
-  - Range filters (min/max)
-  - Date ranges (_from, _to)
-  - Boolean values
-  - Null/Not null checks
-- **Advanced Search**: Full-text search across multiple fields including relationships
-- **Flexible Sorting**: Sort by any column with configurable defaults
-- **Smart Pagination**: Automatic pagination with configurable per-page limits
-- **Standardized Responses**: Consistent JSON response format across your API
-- **Response Helpers**: Convenient methods for common HTTP responses
+### Core Features
+- **Dynamic Filtering**: Filter by any field with support for exact matches, IN queries, range filters, date ranges, boolean values, and null checks
+- **Advanced Search**: Full-text search across multiple fields including relationships with SQL injection prevention
+- **Flexible Sorting**: Sort by any column with whitelist validation and configurable defaults
+- **Smart Pagination**: Automatic pagination with configurable per-page limits and DoS protection
+- **Standardized Responses**: Consistent JSON response format across your API with customizable timestamps
+
+### Security Features (NEW)
+- **SQL Injection Prevention**: Comprehensive input sanitization and validation
+- **Whitelist-Based Filtering**: Only explicitly allowed fields can be filtered/sorted
+- **Mass Assignment Protection**: Secure defaults prevent unauthorized data access
+- **Error Message Sanitization**: SQL errors sanitized in production (20+ patterns detected)
+- **Input Validation**: Request parameter validation with max length limits
+- **DoS Protection**: Configurable pagination limits prevent resource exhaustion
+
+### Developer Experience
+- **Response Helpers**: Convenient methods for common HTTP responses (success, error, validation, etc.)
 - **Query Hooks**: Extensible query building with multiple override points
-- **Multi-Tenancy Support**: Built-in branch filtering and access control helpers
-- **Configurable**: Extensive configuration options
-- **Helper Functions**: Global helper functions for quick responses
-- **Laravel 10.x & 11.x Support**
+- **Optional Traits**: Multi-tenancy and permission helpers available as opt-in traits
+- **Global Helper Functions**: Use anywhere in your application
+- **Comprehensive Testing**: 78 tests covering unit, feature, and security scenarios
+- **Type-Safe**: Full type hints and PHPDoc comments throughout
+- **Static Analysis**: PHPStan level 6 compliant
+- **CI/CD Ready**: GitHub Actions workflows included
 
-## Important Notes
-
-⚠️ **Authorization:** This package does NOT include Laravel's `authorize()` method. You are responsible for implementing your own authorization logic in your controllers. See [Authorization](#authorization) section below.
+### Framework Support
+- **Laravel**: 10.x, 11.x, 12.x
+- **PHP**: 8.1, 8.2, 8.3
+- **Database**: MySQL, PostgreSQL, SQLite, SQL Server (any Laravel-supported database)
 
 ## Installation
 
@@ -34,7 +50,7 @@ Install via Composer:
 composer require masum/laravel-api-controller
 ```
 
-Optionally publish the config file:
+Publish the configuration file (optional):
 
 ```bash
 php artisan vendor:publish --tag=api-controller-config
@@ -56,140 +72,123 @@ use App\Models\Product;
 
 class ProductController extends ApiController
 {
-    protected $model = Product::class;
+    /**
+     * The Eloquent model class to use for queries.
+     */
+    protected string $model = Product::class;
 
+    /**
+     * Fields that can be searched using the ?search parameter.
+     */
     protected array $searchableFields = ['name', 'description', 'sku'];
 
+    /**
+     * Fields that can be filtered using query parameters.
+     */
     protected array $filterableFields = ['category_id', 'status', 'price', 'created_at'];
 
+    /**
+     * Default column to sort by.
+     */
     protected string $defaultSort = 'created_at';
 
+    /**
+     * Default sort direction.
+     */
     protected string $defaultDirection = 'desc';
 
     // The index() method is already implemented in the base class!
+    // It automatically handles filtering, searching, sorting, and pagination.
 }
 ```
 
-### API Endpoints
+### Register Routes
 
-**GET /api/products**
+```php
+use App\Http\Controllers\Api\ProductController;
 
-The `index()` method automatically supports:
+Route::get('/api/products', [ProductController::class, 'index']);
+```
 
-#### Basic Retrieval
+That's it! Your API endpoint now supports all the features below.
+
+## API Usage Examples
+
+### Basic Retrieval
+
+Get all products with default pagination:
+
 ```
 GET /api/products
 ```
 
-#### Search
+### Search
+
+Search across all configured searchable fields:
+
 ```
 GET /api/products?search=laptop
 ```
 
-#### Filtering
+### Filtering
+
+#### Exact Match
 ```
-GET /api/products?category_id=5
 GET /api/products?status=active
+GET /api/products?category_id=5
+```
+
+#### Multiple Values (IN Query)
+```
+GET /api/products?category_id[]=1&category_id[]=2&category_id[]=3
+```
+
+#### Range Filters
+```
 GET /api/products?price[min]=100&price[max]=500
+```
+
+#### Date Range Filters
+```
 GET /api/products?created_at_from=2024-01-01&created_at_to=2024-12-31
 ```
 
-#### Sorting
+#### Boolean Filters
 ```
-GET /api/products?sort_by=price&sort_direction=asc
+GET /api/products?featured=true
+GET /api/products?in_stock=false
 ```
 
-#### Pagination
+#### Null Checks
+```
+GET /api/products?deleted_at=null        # Only non-deleted
+GET /api/products?description=not_null   # Only with description
+```
+
+### Sorting
+
+```
+GET /api/products?sort_by=price&sort_direction=asc
+GET /api/products?sort_by=created_at&sort_direction=desc
+```
+
+### Pagination
+
 ```
 GET /api/products?per_page=20&page=2
 ```
 
-#### Combined
+### Combined Query
+
+All features can be combined:
+
 ```
-GET /api/products?search=laptop&category_id=5&sort_by=price&sort_direction=desc&per_page=15
-```
-
-## Advanced Usage
-
-### Relationship Search
-
-Search across relationships by using dot notation:
-
-```php
-protected array $searchableFields = [
-    'name',
-    'description',
-    'category.name',  // Search in related category
-    'brand.name'      // Search in related brand
-];
-```
-
-### Eager Loading
-
-Override `getIndexWith()` to eager load relationships:
-
-```php
-protected function getIndexWith(): array
-{
-    return ['category', 'brand', 'images'];
-}
-```
-
-### Custom Query Modifications
-
-Override `getBaseIndexQuery()` for custom query logic:
-
-```php
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    return $this->model::query()
-        ->where('status', 'active')
-        ->whereNotNull('published_at');
-}
-```
-
-### Additional Conditions
-
-Override `applyAdditionalConditions()` for request-specific logic:
-
-```php
-protected function applyAdditionalConditions(Builder $query, Request $request): Builder
-{
-    if ($request->has('featured')) {
-        $query->where('featured', true);
-    }
-
-    if ($request->user()->isCustomer()) {
-        $query->where('visible_to_customers', true);
-    }
-
-    return $query;
-}
-```
-
-### Custom Data Transformation
-
-Transform the response data:
-
-```php
-protected function transformIndexData(LengthAwarePaginator|Collection $results, Request $request): array
-{
-    $items = $results instanceof LengthAwarePaginator ? $results->items() : $results->toArray();
-
-    return array_map(function ($item) {
-        return [
-            'id' => $item['id'],
-            'name' => $item['name'],
-            'price' => number_format($item['price'], 2),
-            'formatted_date' => $item['created_at']->format('M d, Y'),
-        ];
-    }, $items);
-}
+GET /api/products?search=laptop&category_id=5&price[min]=500&sort_by=price&sort_direction=desc&per_page=15&page=1
 ```
 
 ## Response Format
 
-All responses follow a standardized format:
+All responses follow a standardized, predictable format:
 
 ### Success Response
 
@@ -200,8 +199,9 @@ All responses follow a standardized format:
   "data": [
     {
       "id": 1,
-      "name": "Product 1",
-      "price": 99.99
+      "name": "Gaming Laptop",
+      "price": 1299.99,
+      "status": "active"
     }
   ],
   "timestamp": "2024-10-30T10:30:00.000000Z",
@@ -238,30 +238,168 @@ All responses follow a standardized format:
 }
 ```
 
+## Advanced Usage
+
+### Relationship Search
+
+Search across relationships using dot notation:
+
+```php
+protected array $searchableFields = [
+    'name',
+    'description',
+    'category.name',  // Search in related category
+    'brand.name'      // Search in related brand
+];
+```
+
+### Eager Loading Relationships
+
+Override `getIndexWith()` to eager load relationships:
+
+```php
+protected function getIndexWith(): array
+{
+    return ['category', 'brand', 'images'];
+}
+```
+
+Or for more control, override `getBaseIndexQuery()`:
+
+```php
+protected function getBaseIndexQuery(Request $request): Builder
+{
+    return parent::getBaseIndexQuery($request)
+        ->with([
+            'category',
+            'brand',
+            'images',
+            'reviews' => function ($query) {
+                $query->where('approved', true)->limit(5);
+            }
+        ]);
+}
+```
+
+### Custom Query Logic
+
+Add custom base query conditions:
+
+```php
+protected function getBaseIndexQuery(Request $request): Builder
+{
+    return parent::getBaseIndexQuery($request)
+        ->where('status', 'active')
+        ->whereNotNull('published_at');
+}
+```
+
+### Request-Specific Conditions
+
+Apply conditions based on the request:
+
+```php
+protected function applyAdditionalConditions(Builder $query, Request $request): Builder
+{
+    // Filter by featured flag if provided
+    if ($request->has('featured')) {
+        $query->where('featured', true);
+    }
+
+    // Customer users only see customer-visible products
+    if ($request->user()?->isCustomer()) {
+        $query->where('visible_to_customers', true);
+    }
+
+    return $query;
+}
+```
+
+### Data Transformation
+
+Transform the response data before sending:
+
+```php
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
+
+protected function transformIndexData(
+    LengthAwarePaginator|Collection $results,
+    Request $request
+): array {
+    $items = $results instanceof LengthAwarePaginator
+        ? $results->items()
+        : $results->toArray();
+
+    return array_map(function ($item) {
+        return [
+            'id' => $item['id'],
+            'name' => $item['name'],
+            'price' => number_format($item['price'], 2),
+            'formatted_date' => $item['created_at']->format('M d, Y'),
+        ];
+    }, $items);
+}
+```
+
+### Using handleIndexRequest()
+
+For custom endpoints with standard filtering:
+
+```php
+public function activeProducts(Request $request): JsonResponse
+{
+    $query = Product::where('status', 'active')
+        ->where('stock', '>', 0);
+
+    // Applies all standard filtering, searching, sorting, and pagination
+    return $this->handleIndexRequest($request, $query);
+}
+
+public function userOrders(Request $request): JsonResponse
+{
+    $query = Order::where('user_id', auth()->id());
+
+    return $this->handleIndexRequest($request, $query);
+}
+```
+
 ## Response Helpers
 
 The base controller provides convenient response methods:
 
 ```php
-// Success responses
+// Success responses (200)
 return $this->success('Operation successful', $data);
+
+// Created response (201)
 return $this->created('Resource created', $data);
+
+// No content response (204)
 return $this->noContent('Deleted successfully');
 
-// Error responses
-return $this->error('Something went wrong');
-return $this->validationError('Invalid input', $errors);
-return $this->notFound('Product not found');
-return $this->unauthorized('Please login');
-return $this->forbidden('Access denied');
-
-// Paginated response
+// Paginated response (200)
 return $this->paginated($paginator, 'Products retrieved');
+
+// Error responses
+return $this->error('Something went wrong', null, 500);
+
+// Validation error (422)
+return $this->validationError('Invalid input', $validationErrors);
+
+// Not found (404)
+return $this->notFound('Product not found');
+
+// Unauthorized (401)
+return $this->unauthorized('Please login');
+
+// Forbidden (403)
+return $this->forbidden('Access denied');
 ```
 
 ## Global Helper Functions
 
-You can also use global helper functions anywhere in your application:
+Use these helper functions anywhere in your application:
 
 ```php
 // Success responses
@@ -279,7 +417,7 @@ return server_error_response('Server error');
 // Paginated response
 return paginated_response($paginator, 'Data retrieved');
 
-// Direct API response builder
+// Custom API response builder
 return api_response()
     ->success(true)
     ->message('Custom response')
@@ -289,74 +427,152 @@ return api_response()
     ->toJsonResponse();
 ```
 
-## Filter Examples
+## Multi-Tenancy Support (Optional)
 
-### Multiple Values (IN Query)
+The package includes optional traits for common scenarios like multi-tenancy and permission checking.
 
-```
-GET /api/products?category_id[]=1&category_id[]=2&category_id[]=3
+### Branch-Based Multi-Tenancy
+
+Use the `HasBranchFiltering` trait:
+
+```php
+use Masum\ApiController\Controllers\ApiController;
+use Masum\ApiController\Traits\HasBranchFiltering;
+
+class ProductController extends ApiController
+{
+    use HasBranchFiltering;
+
+    protected function getBaseIndexQuery(Request $request): Builder
+    {
+        $query = parent::getBaseIndexQuery($request)
+            ->with(['category', 'brand']);
+
+        // Automatically filters by user's branch_id
+        // Super admins see all records
+        return $this->applyBranchFilter($query);
+
+        // Or specify a custom column
+        // return $this->applyBranchFilter($query, 'company_branch_id');
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([...]);
+
+        // Ensure user can only create in their branch
+        if (!$this->canAccessBranch($validated['branch_id'])) {
+            return $this->forbidden('Access denied to this branch');
+        }
+
+        // ... create logic
+    }
+}
 ```
 
-### Range Filters
+The `HasBranchFiltering` trait provides:
+- `applyBranchFilter(Builder $query, string $column = 'branch_id')` - Filters records by user's branch
+- `canAccessBranch(?int $branchId)` - Checks if user can access a branch
+- `getUserBranchId()` - Gets the authenticated user's branch ID
+- Automatically skips filtering for super admins
+- Handles null users gracefully
 
-```
-GET /api/products?price[min]=100&price[max]=500
+### Permission Checking (Optional)
+
+Use the `HasPermissions` trait:
+
+```php
+use Masum\ApiController\Traits\HasPermissions;
+
+class ProductController extends ApiController
+{
+    use HasPermissions;
+
+    public function store(Request $request): JsonResponse
+    {
+        if (!$this->hasPermission('create', 'products')) {
+            return $this->forbidden('You do not have permission to create products');
+        }
+
+        // ... create logic
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        if (!$this->hasRole(['admin', 'manager'])) {
+            return $this->forbidden('Only admins and managers can delete products');
+        }
+
+        // ... delete logic
+    }
+}
 ```
 
-### Date Range Filters
+The `HasPermissions` trait provides:
+- `hasPermission(string $action, string $resource)` - Checks specific permissions
+- `isSuperAdmin()` - Checks if user is super admin
+- `hasRole(string|array $roles)` - Checks if user has any of the given roles
+- `hasAllRoles(array $roles)` - Checks if user has all given roles
 
-```
-GET /api/products?created_at_from=2024-01-01&created_at_to=2024-12-31
-```
-
-### Boolean Filters
-
-```
-GET /api/products?featured=true
-GET /api/products?in_stock=false
-```
-
-### Null Checks
-
-```
-GET /api/products?deleted_at=null        # Only non-deleted
-GET /api/products?description=not_null   # Only with description
-```
+**Note:** These traits expect your User model to have a `role_name` property. Customize them as needed for your application's permission system.
 
 ## Configuration
 
-Customize the package behavior in `config/api-controller.php`:
+Customize the package behavior by publishing and editing `config/api-controller.php`:
 
 ```php
 return [
-    // API version to include in responses
-    'version' => '1.0.0',
-    'include_version' => false,
+    /*
+    |--------------------------------------------------------------------------
+    | API Version
+    |--------------------------------------------------------------------------
+    */
+    'version' => env('API_VERSION', '1.0.0'),
+    'include_version' => env('API_INCLUDE_VERSION', false),
 
-    // Sanitize SQL errors for security
-    'sanitize_sql_errors' => true,
+    /*
+    |--------------------------------------------------------------------------
+    | Security Settings
+    |--------------------------------------------------------------------------
+    */
+    'sanitize_sql_errors' => env('API_SANITIZE_SQL_ERRORS', true),
 
-    // Pagination defaults
+    /*
+    |--------------------------------------------------------------------------
+    | Pagination Settings
+    |--------------------------------------------------------------------------
+    */
     'pagination' => [
-        'default_per_page' => 15,
-        'max_per_page' => 100,
+        'default_per_page' => env('API_DEFAULT_PER_PAGE', 15),
+        'max_per_page' => env('API_MAX_PER_PAGE', 100),
     ],
 
-    // Sorting defaults
+    /*
+    |--------------------------------------------------------------------------
+    | Sorting Settings
+    |--------------------------------------------------------------------------
+    */
     'sorting' => [
-        'default_column' => 'created_at',
-        'default_direction' => 'desc',
+        'default_column' => env('API_DEFAULT_SORT', 'created_at'),
+        'default_direction' => env('API_DEFAULT_SORT_DIRECTION', 'desc'),
     ],
 
-    // Response format
+    /*
+    |--------------------------------------------------------------------------
+    | Response Format Settings
+    |--------------------------------------------------------------------------
+    */
     'response' => [
         'include_timestamp' => true,
-        'timestamp_format' => 'iso8601',
+        'timestamp_format' => 'iso8601', // Options: iso8601, unix, custom
+        'custom_timestamp_format' => 'Y-m-d H:i:s', // Used when format is 'custom'
     ],
 ];
 ```
 
-You can also use environment variables:
+### Environment Variables
+
+Configure via `.env` file:
 
 ```env
 API_VERSION=2.0.0
@@ -368,14 +584,14 @@ API_DEFAULT_SORT=created_at
 API_DEFAULT_SORT_DIRECTION=desc
 ```
 
-## Override Properties Per Controller
+### Per-Controller Overrides
 
 Each controller can override the default settings:
 
 ```php
 class ProductController extends ApiController
 {
-    protected $model = Product::class;
+    protected string $model = Product::class;
     protected int $maxPerPage = 50;
     protected int $defaultPerPage = 10;
     protected string $defaultSort = 'name';
@@ -383,363 +599,243 @@ class ProductController extends ApiController
 }
 ```
 
-## Authorization
+## Security Features
 
-⚠️ **Important:** This package does NOT include Laravel's `authorize()` method. You are responsible for implementing your own authorization logic.
+This package includes enterprise-grade security features:
 
-### Handling Authorization
+### SQL Injection Prevention
 
-If your application uses Laravel policies:
+- **Search term sanitization**: Escapes LIKE wildcards (%, _, \\) to prevent SQL injection
+- **Sort column validation**: Whitelist-based validation ensures only allowed columns can be sorted
+- **Parameter binding**: All queries use Laravel's parameter binding
+
+### Input Validation
+
+- **Max search length**: Search terms limited to 255 characters
+- **Filterable field whitelist**: Only explicitly allowed fields can be filtered
+- **Sort column whitelist**: Only allowed columns (filterable + searchable + timestamps) can be sorted
+
+### Error Handling
+
+- **SQL error sanitization**: In production, SQL errors are sanitized to prevent information disclosure
+- **Comprehensive logging**: All errors logged with full context for debugging
+- **User-friendly messages**: Generic error messages shown to users in production
+
+### DoS Protection
+
+- **Max pagination limit**: Prevents requesting unlimited records
+- **Required authorization for ?all=true**: Fetching all records requires authentication
+
+### Mass Assignment Protection
+
+- **Secure defaults**: Empty filterableFields array denies all filtering (fail-secure)
+- **Explicit whitelisting**: Only listed fields can be filtered
+
+## Testing
+
+The package includes comprehensive test coverage:
+
+```bash
+# Run tests
+composer test
+
+# Run tests with coverage report
+composer test-coverage
+
+# Run static analysis
+composer analyse
+
+# Check code style
+composer format-check
+
+# Fix code style
+composer format
+
+# Run all quality checks
+composer all-checks
+```
+
+### Test Coverage
+
+- **78 tests** covering:
+  - Unit tests for ApiController methods
+  - Response class tests
+  - Helper function tests
+  - Feature tests for complete workflows
+  - Security tests (SQL injection, DoS, mass assignment)
+
+### Writing Tests for Your Controllers
 
 ```php
-public function store(Request $request): JsonResponse
-{
-    // Option 1: Use Laravel's authorize (if available in your base controller)
-    $this->authorize('create', Product::class);
+use Masum\ApiController\Tests\TestCase;
 
-    // Option 2: Use Gate facade
-    if (! Gate::allows('create', Product::class)) {
-        return $this->forbidden('You are not authorized to create products');
+class ProductControllerTest extends TestCase
+{
+    /** @test */
+    public function it_filters_products_by_status()
+    {
+        Product::factory()->create(['status' => 'active']);
+        Product::factory()->create(['status' => 'inactive']);
+
+        $response = $this->getJson('/api/products?status=active');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.0.status', 'active');
     }
-
-    // Option 3: Manual check
-    if (! auth()->user()->can('create', Product::class)) {
-        return $this->forbidden('Access denied');
-    }
-
-    // Your logic here...
 }
 ```
 
-### Migration Note
+## Code Quality
 
-When migrating from a local `ApiController` that includes `authorize()`:
-- Comment out all `$this->authorize()` calls, or
-- Implement `authorize()` in your own base controller that extends this package's `ApiController`
+This package maintains high code quality standards:
 
-## Helper Methods
-
-The package includes several helper methods for common scenarios:
-
-### User & Authentication
-
-```php
-// Get the authenticated user
-$user = $this->getUser();
-
-// Get user's branch ID (for multi-tenancy)
-$branchId = $this->getUserBranchId();
-
-// Check if user is super admin
-if ($this->isSuperAdmin()) {
-    // Allow access to all records
-}
-```
-
-### Multi-Tenancy & Branch Filtering
-
-Perfect for applications with branch-based access control:
-
-```php
-use Illuminate\Database\Eloquent\Builder;
-
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    $query = parent::getBaseIndexQuery($request)
-        ->with(['relationships']);
-
-    // Apply branch filtering automatically
-    return $this->applyBranchFilter($query);
-
-    // Or specify a custom column
-    return $this->applyBranchFilter($query, 'company_branch_id');
-}
-
-// Check if user can access a specific branch
-if (!$this->canAccessBranch($branchId)) {
-    return $this->forbidden('Access denied to this branch');
-}
-```
-
-The `applyBranchFilter()` method:
-- Filters records by user's branch ID
-- Skips filtering for super admins
-- Handles null users gracefully
-- Defaults to 'branch_id' column (customizable)
-
-### Custom Query with handleIndexRequest()
-
-For custom filtering beyond the base query:
-
-```php
-public function activeProducts(Request $request): JsonResponse
-{
-    $query = Product::where('status', 'active')
-        ->where('stock', '>', 0);
-
-    // This applies all standard filtering, searching, sorting, and pagination
-    return $this->handleIndexRequest($request, $query);
-}
-
-public function userTasks(Request $request): JsonResponse
-{
-    $query = Task::where('user_id', auth()->id());
-
-    return $this->handleIndexRequest($request, $query);
-}
-```
-
-## Migrating from Local ApiController
-
-**Note**: As of 2025-10-31, the legacy local `app/Http/Controllers/ApiController.php` has been successfully removed from the Fiber Map v2 project. All 55 controllers have been migrated to use this package.
-
-If you're migrating from your own local `App\Http\Controllers\ApiController`:
-
-### Step-by-Step Migration
-
-**1. Update the import:**
-```php
-// Old
-use App\Http\Controllers\ApiController;
-
-// New
-use Masum\ApiController\Controllers\ApiController;
-use Illuminate\Database\Eloquent\Builder;
-```
-
-**2. Add return type to getBaseIndexQuery():**
-```php
-// Add Builder return type
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    return parent::getBaseIndexQuery($request)->with(['relations']);
-}
-```
-
-**3. Handle authorization:**
-```php
-// Comment out authorize() calls
-// $this->authorize('create', Product::class);
-
-// Or implement your own authorization
-if (!auth()->user()->can('create-products')) {
-    return $this->forbidden('Access denied');
-}
-```
-
-**4. Remove duplicate helper methods:**
-
-If your local controller had these methods, **remove them** (they're now in the package):
-- `getUser()`
-- `getUserBranchId()`
-- `applyBranchFilter()`
-- `canAccessBranch()`
-- `hasPermission()`
-- `isSuperAdmin()`
-
-**5. Update eager loading pattern:**
-```php
-// Old pattern (still works)
-protected function getIndexWith(): array
-{
-    return ['category', 'brand'];
-}
-
-// New pattern (preferred for more control)
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    return parent::getBaseIndexQuery($request)
-        ->with(['category', 'brand', 'tag']);
-}
-```
-
-**6. Align searchable/filterable fields with model:**
-```php
-// Check your model's fillable fields
-protected $fillable = ['name', 'sku', 'price', 'status'];
-
-// Match in controller
-protected array $searchableFields = ['name', 'sku'];
-protected array $filterableFields = [
-    'name',
-    'sku',
-    'price',
-    'status',
-    'created_at',
-    'updated_at',
-];
-```
-
-### Migration Checklist
-
-- [ ] Update namespace imports
-- [ ] Add `Builder` return type to `getBaseIndexQuery()`
-- [ ] Handle/comment out `authorize()` calls
-- [ ] Remove duplicate helper methods
-- [ ] Align searchableFields with model
-- [ ] Align filterableFields with model
-- [ ] Test all CRUD endpoints
-- [ ] Test search and filtering
-- [ ] Test pagination
-- [ ] Verify branch filtering (if applicable)
+- **PSR-12 Coding Standards**: Enforced via PHP-CS-Fixer
+- **PHPStan Level 6**: Static analysis for type safety
+- **Full Type Hints**: All methods and properties strictly typed
+- **Comprehensive PHPDoc**: All methods documented with examples
+- **CI/CD**: Automated testing via GitHub Actions
 
 ## Troubleshooting
 
-### Common Issues
+### Search not working on relationship fields
 
-**Issue: "Call to undefined method authorize()"**
+**Problem**: Searching on `category.name` doesn't work.
 
-**Cause:** The package doesn't include Laravel's `authorize()` method.
+**Solution**: Ensure the relationship is eager loaded:
 
-**Solution:**
 ```php
-// Comment out authorize calls
-// $this->authorize('create', Product::class);
-
-// Or implement authorization manually
-if (!Gate::allows('create', Product::class)) {
-    return $this->forbidden('Access denied');
-}
-```
-
----
-
-**Issue: "Attempt to read property 'role_name' on null"**
-
-**Cause:** User object is null when calling helper methods.
-
-**Solution:** The package handles null users defensively in helper methods. Ensure you're using authentication middleware on protected routes:
-```php
-Route::middleware('auth:sanctum')->group(function () {
-    Route::apiResource('products', ProductController::class);
-});
-```
-
----
-
-**Issue: "Call to undefined relationship [tags]"**
-
-**Cause:** Using plural relationship name for morphOne relationships.
-
-**Solution:**
-```php
-// Wrong (for morphOne relationships)
-->with(['tags'])
-
-// Correct (singular for morphOne, plural for morphMany)
-->with(['tag'])
-```
-
----
-
-**Issue: Search not working on relationship fields**
-
-**Cause:** Relationship not eager loaded or incorrect dot notation.
-
-**Solution:**
-```php
-// Ensure relationship is loaded
 protected function getBaseIndexQuery(Request $request): Builder
 {
     return parent::getBaseIndexQuery($request)
-        ->with(['category']); // Load the relationship
+        ->with(['category']); // Must load the relationship
 }
 
-// Use correct dot notation
 protected array $searchableFields = [
     'name',
     'category.name', // Matches the relationship name
 ];
 ```
 
----
+### Filters not working
 
-**Issue: "Too many SQL queries" (N+1 problem)**
+**Problem**: Filtering by a field doesn't work.
 
-**Cause:** Not eager loading relationships.
+**Solution**: Add the field to `filterableFields`:
 
-**Solution:**
+```php
+protected array $filterableFields = [
+    'status',        // Must exist in database
+    'category_id',   // Must exist in database
+    'created_at',
+    'updated_at',
+];
+```
+
+### Too many SQL queries (N+1 problem)
+
+**Problem**: API response is slow with many queries.
+
+**Solution**: Eager load relationships:
+
 ```php
 protected function getBaseIndexQuery(Request $request): Builder
 {
     return parent::getBaseIndexQuery($request)
-        ->with([
-            'category',
-            'brand',
-            'images',
-            'reviews' => function ($query) {
-                $query->limit(5); // Limit nested results
-            }
-        ]);
+        ->with(['category', 'brand', 'images']);
 }
 ```
 
----
+### Branch filtering not working
 
-**Issue: Filters not working**
+**Problem**: Users see records from other branches.
 
-**Cause:** Field not in `filterableFields` array or model doesn't have the field.
+**Solution**: Apply branch filtering in your query:
 
-**Solution:**
 ```php
-// Check model's fillable or database columns
-protected array $filterableFields = [
-    'status',           // Must exist in database
-    'category_id',      // Must exist in database
-    'created_at',       // Always available (timestamp)
-    'updated_at',       // Always available (timestamp)
-];
-```
+use Masum\ApiController\Traits\HasBranchFiltering;
 
----
-
-**Issue: Branch filtering not working**
-
-**Cause:** Not calling `applyBranchFilter()` in `getBaseIndexQuery()`.
-
-**Solution:**
-```php
-protected function getBaseIndexQuery(Request $request): Builder
+class ProductController extends ApiController
 {
-    $query = parent::getBaseIndexQuery($request)
-        ->with(['relationships']);
+    use HasBranchFiltering;
 
-    // Add branch filtering
-    return $this->applyBranchFilter($query);
+    protected function getBaseIndexQuery(Request $request): Builder
+    {
+        $query = parent::getBaseIndexQuery($request);
+        return $this->applyBranchFilter($query);
+    }
 }
-```
-
-## Testing
-
-```bash
-composer test
 ```
 
 ## Requirements
 
-- PHP 8.1 or higher
-- Laravel 10.x or 11.x
+- **PHP**: 8.1, 8.2, or 8.3
+- **Laravel**: 10.x, 11.x, or 12.x
+- **Database**: Any Laravel-supported database (MySQL, PostgreSQL, SQLite, SQL Server)
 
 ## Use Cases
 
 This package is perfect for:
 
-- Building RESTful APIs with consistent response formats
+- RESTful APIs with consistent response formats
 - Admin panels with complex filtering and search
 - Mobile app backends
 - Data tables with server-side processing
 - Microservices with standardized responses
+- Multi-tenant applications
 - API-first applications
+- Enterprise applications requiring security and auditability
+
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
+
+- Development setup
+- Running tests
+- Code quality standards
+- Commit message conventions
+- Pull request process
+
+### Development Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/masum/laravel-api-controller.git
+cd laravel-api-controller
+
+# Install dependencies
+composer install
+
+# Run tests
+composer test
+
+# Run all quality checks
+composer all-checks
+```
+
+## Changelog
+
+Please see [CHANGELOG.md](CHANGELOG.md) for information on recent changes.
+
+## Security Vulnerabilities
+
+If you discover a security vulnerability, please email the maintainers at contact@example.com. All security vulnerabilities will be promptly addressed.
 
 ## License
 
-MIT License
+The MIT License (MIT). Please see [LICENSE.md](LICENSE.md) for more information.
 
 ## Credits
 
-- Masum
-- All Contributors
+- **Author**: Masum Nishat
+- **Contributors**: All contributors who have helped improve this package
 
 ## Support
 
-For issues, questions, or contributions, please visit the GitHub repository.
+- **Issues**: [GitHub Issues](https://github.com/masum/laravel-api-controller/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/masum/laravel-api-controller/discussions)
+- **Documentation**: [README.md](README.md)
+
+---
+
+**Built with ❤️ for the Laravel community**

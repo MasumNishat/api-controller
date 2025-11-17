@@ -1,0 +1,52 @@
+{
+    "name": "masum/laravel-api-controller",
+    "description": "A powerful Laravel API controller base class with dynamic filtering, searching, sorting, pagination, and standardized JSON responses",
+    "keywords": ["laravel", "api", "controller", "rest", "filtering", "search", "pagination", "json-api"],
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Masum",
+            "email": "masum@example.com"
+        }
+    ],
+    "homepage": "https://github.com/masum/laravel-api-controller",
+    "support": {
+        "issues": "https://github.com/masum/laravel-api-controller/issues",
+        "source": "https://github.com/masum/laravel-api-controller"
+    },
+    "require": {
+        "php": "^8.1|^8.2|^8.3",
+        "illuminate/support": "^10.0|^11.0|^12.0",
+        "illuminate/database": "^10.0|^11.0|^12.0",
+        "illuminate/http": "^10.0|^11.0|^12.0",
+        "illuminate/pagination": "^10.0|^11.0|^12.0",
+        "illuminate/routing": "^10.0|^11.0|^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0",
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Masum\\ApiController\\": "src/"
+        },
+        "files": [
+            "src/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Masum\\ApiController\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Masum\\ApiController\\ApiControllerServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

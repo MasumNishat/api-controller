@@ -1,0 +1,14 @@
+parameters:
+    level: 6
+    paths:
+        - src
+    excludePaths:
+        - src/config/api-controller.php
+    ignoreErrors:
+        # Allow dynamic properties on Eloquent Builder
+        - '#Call to an undefined method Illuminate\\Database\\Eloquent\\Builder#'
+        - '#Call to an undefined method Illuminate\\Database\\Query\\Builder#'
+        # Allow mixed types from Auth facade
+        - '#Method .* has no return type specified#'
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false

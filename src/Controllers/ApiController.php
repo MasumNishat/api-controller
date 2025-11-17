@@ -12,51 +12,136 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * Class ApiController
+ *
+ * A powerful base controller for Laravel APIs with built-in support for:
+ * - Dynamic filtering with multiple operators
+ * - Full-text search across multiple fields and relationships
+ * - Flexible sorting with security validation
+ * - Smart pagination with configurable limits
+ * - Standardized JSON responses
+ * - Security features (SQL injection prevention, input validation)
+ *
+ * @package Masum\ApiController\Controllers
+ * @version 1.0.0
+ */
 abstract class ApiController extends Controller
 {
-    /**
-     * The model instance for querying
-     */
-    protected $model;
+    // Query parameter names
+    protected const PARAM_SEARCH = 'search';
+    protected const PARAM_SORT_BY = 'sort_by';
+    protected const PARAM_SORT_DIRECTION = 'sort_direction';
+    protected const PARAM_PER_PAGE = 'per_page';
+    protected const PARAM_PAGE = 'page';
+    protected const PARAM_ALL = 'all';
+
+    // Filter suffixes
+    protected const SUFFIX_FROM = '_from';
+    protected const SUFFIX_TO = '_to';
+    protected const SUFFIX_MIN = 'min';
+    protected const SUFFIX_MAX = 'max';
+
+    // Filter value constants
+    protected const VALUE_TRUE = 'true';
+    protected const VALUE_FALSE = 'false';
+    protected const VALUE_NULL = 'null';
+    protected const VALUE_NOT_NULL = 'not_null';
+
+    // Sort directions
+    protected const SORT_ASC = 'asc';
+    protected const SORT_DESC = 'desc';
+
+    // Search term limits
+    protected const MAX_SEARCH_LENGTH = 255;
 
     /**
-     * Fields that can be searched
-     * @var array
+     * The Eloquent model class name for querying.
+     *
+     * @var string
+     */
+    protected string $model;
+
+    /**
+     * Fields that can be searched using the 'search' query parameter.
+     * Supports dot notation for relationship fields (e.g., 'category.name').
+     *
+     * @var array<string>
      */
     protected array $searchableFields = [];
 
     /**
-     * Fields that can be filtered
-     * @var array
+     * Fields that can be filtered using query parameters.
+     * Only fields in this array can be used for filtering.
+     *
+     * @var array<string>
      */
     protected array $filterableFields = [];
 
     /**
-     * Default sort column
+     * Default column to sort by when no sort parameter is provided.
+     *
      * @var string
      */
     protected string $defaultSort = 'created_at';
 
     /**
-     * Default sort direction
+     * Default sort direction ('asc' or 'desc').
+     *
      * @var string
      */
-    protected string $defaultDirection = 'desc';
+    protected string $defaultDirection = self::SORT_DESC;
 
     /**
-     * Maximum items per page
+     * Maximum number of items that can be requested per page.
+     *
      * @var int
      */
     protected int $maxPerPage = 100;
 
     /**
-     * Default items per page
+     * Default number of items per page when not specified.
+     *
      * @var int
      */
     protected int $defaultPerPage = 15;
 
     /**
-     * Common index method implementation
+     * Controller constructor.
+     *
+     * Initializes controller with configuration values.
+     * Child controllers can override properties to use different defaults.
+     */
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Use config values if properties haven't been overridden
+        if ($this->maxPerPage === 100) {
+            $this->maxPerPage = config('api-controller.pagination.max_per_page', 100);
+        }
+
+        if ($this->defaultPerPage === 15) {
+            $this->defaultPerPage = config('api-controller.pagination.default_per_page', 15);
+        }
+
+        if ($this->defaultSort === 'created_at') {
+            $this->defaultSort = config('api-controller.sorting.default_column', 'created_at');
+        }
+
+        if ($this->defaultDirection === self::SORT_DESC) {
+            $this->defaultDirection = config('api-controller.sorting.default_direction', self::SORT_DESC);
+        }
+    }
+
+    /**
+     * Common index method implementation.
+     *
+     * Handles GET requests with automatic support for search, filters,
+     * sorting, and pagination based on query parameters.
+     *
+     * @param Request $request The HTTP request
+     * @return JsonResponse Standard JSON API response
      */
     public function index(Request $request): JsonResponse
     {
@@ -64,7 +149,23 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Override this method to modify the base query
+     * Override this method to modify the base query.
+     *
+     * Use this to add global scopes, default where clauses, or other
+     * modifications that should apply to all index queries.
+     *
+     * @param Request $request The HTTP request
+     * @return Builder The base query builder
+     *
+     * @example
+     * ```php
+     * protected function getBaseIndexQuery(Request $request): Builder
+     * {
+     *     return $this->model::query()
+     *         ->where('status', 'published')
+     *         ->whereNotNull('published_at');
+     * }
+     * ```
      */
     protected function getBaseIndexQuery(Request $request): Builder
     {
@@ -72,7 +173,19 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Override this method to add eager loading
+     * Override this method to define relationships to eager load.
+     *
+     * Prevents N+1 query problems by eager loading relationships.
+     *
+     * @return array<string> Array of relationship names to load
+     *
+     * @example
+     * ```php
+     * protected function getIndexWith(): array
+     * {
+     *     return ['category', 'tags', 'author'];
+     * }
+     * ```
      */
     protected function getIndexWith(): array
     {
@@ -80,7 +193,30 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Override this method to add additional conditions
+     * Override this method to add request-specific conditions.
+     *
+     * Use this for conditions that depend on the request context,
+     * such as user-specific filters or dynamic scopes.
+     *
+     * @param Builder $query The query builder
+     * @param Request $request The HTTP request
+     * @return Builder The modified query builder
+     *
+     * @example
+     * ```php
+     * protected function applyAdditionalConditions(Builder $query, Request $request): Builder
+     * {
+     *     if ($request->has('featured')) {
+     *         $query->where('featured', true);
+     *     }
+     *
+     *     if ($request->user()->isCustomer()) {
+     *         $query->where('visible_to_customers', true);
+     *     }
+     *
+     *     return $query;
+     * }
+     * ```
      */
     protected function applyAdditionalConditions(Builder $query, Request $request): Builder
     {
@@ -88,7 +224,21 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Override this method to control who can request all records
+     * Override this method to control who can request all records.
+     *
+     * By default, fetching all records is denied for security.
+     * Override with proper authorization logic if needed.
+     *
+     * @param Request $request The HTTP request
+     * @return bool True if user can fetch all records, false otherwise
+     *
+     * @example
+     * ```php
+     * protected function canRequestAllRecords(Request $request): bool
+     * {
+     *     return $request->user()?->isAdmin() ?? false;
+     * }
+     * ```
      */
     protected function canRequestAllRecords(Request $request): bool
     {
@@ -98,7 +248,19 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Common search and filter method for index endpoints
+     * Common search and filter method for index endpoints.
+     *
+     * Handles the complete request lifecycle:
+     * 1. Validates request parameters
+     * 2. Builds and executes query with filters
+     * 3. Transforms results
+     * 4. Returns standardized JSON response
+     *
+     * @param Request $request The HTTP request
+     * @param Builder|null $query Optional custom base query
+     * @return JsonResponse Standard JSON API response
+     *
+     * @throws ValidationException If request parameters are invalid
      */
     protected function handleIndexRequest(Request $request, ?Builder $query = null): JsonResponse
     {
@@ -152,17 +314,24 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Validate request parameters for security
+     * Validate request parameters for security.
+     *
+     * Ensures all query parameters meet expected formats and constraints.
+     * Throws ValidationException if validation fails.
+     *
+     * @param Request $request The HTTP request
+     * @return void
+     * @throws ValidationException If validation fails
      */
     protected function validateRequestParameters(Request $request): void
     {
         $rules = [
-            'per_page' => 'nullable|integer|min:1|max:' . $this->maxPerPage,
-            'page' => 'nullable|integer|min:1',
-            'sort_by' => 'nullable|string|max:50',
-            'sort_direction' => 'nullable|in:asc,desc',
-            'search' => 'nullable|string|max:255',
-            'all' => 'nullable|boolean',
+            self::PARAM_PER_PAGE => 'nullable|integer|min:1|max:' . $this->maxPerPage,
+            self::PARAM_PAGE => 'nullable|integer|min:1',
+            self::PARAM_SORT_BY => 'nullable|string|max:50',
+            self::PARAM_SORT_DIRECTION => 'nullable|in:' . self::SORT_ASC . ',' . self::SORT_DESC,
+            self::PARAM_SEARCH => 'nullable|string|max:' . self::MAX_SEARCH_LENGTH,
+            self::PARAM_ALL => 'nullable|boolean',
         ];
 
         $validator = Validator::make($request->all(), $rules);
@@ -173,7 +342,14 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Sanitize search term to prevent SQL injection
+     * Sanitize search term to prevent SQL injection and unexpected behavior.
+     *
+     * Escapes special LIKE characters (%, _, \) and limits length.
+     * Laravel's parameter binding provides primary SQL injection protection,
+     * but we add this layer to prevent unintended LIKE wildcard behavior.
+     *
+     * @param string $searchTerm The raw search term
+     * @return string The sanitized search term
      */
     protected function sanitizeSearchTerm(string $searchTerm): string
     {
@@ -183,15 +359,22 @@ abstract class ApiController extends Controller
         $searchTerm = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $searchTerm);
 
         // Limit search term length as an additional security measure
-        return mb_substr($searchTerm, 0, 255);
+        return mb_substr($searchTerm, 0, self::MAX_SEARCH_LENGTH);
     }
 
     /**
-     * Apply search to query
+     * Apply search filters to the query.
+     *
+     * Searches across all fields defined in $searchableFields property.
+     * Supports both direct model fields and relationship fields using dot notation.
+     *
+     * @param Builder $query The query builder
+     * @param Request $request The HTTP request
+     * @return Builder The modified query builder
      */
     protected function applySearch(Builder $query, Request $request): Builder
     {
-        $searchTerm = $request->get('search');
+        $searchTerm = $request->get(self::PARAM_SEARCH);
 
         if (!$searchTerm || empty($this->searchableFields)) {
             return $query;
@@ -214,7 +397,12 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Apply relation-based search
+     * Apply search on relationship fields.
+     *
+     * @param Builder $query The query builder
+     * @param string $field The relationship field in dot notation (e.g., 'category.name')
+     * @param string $searchTerm The sanitized search term
+     * @return void
      */
     protected function applyRelationSearch(Builder $query, string $field, string $searchTerm): void
     {
@@ -227,7 +415,10 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Validate if a date string is valid
+     * Validate if a date string is valid.
+     *
+     * @param string $date The date string to validate
+     * @return bool True if valid date, false otherwise
      */
     protected function isValidDate(string $date): bool
     {
@@ -240,9 +431,17 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Apply date range filters
+     * Apply date range filters.
+     *
+     * Handles _from and _to suffixes for date range filtering.
+     * Validates date format before applying to query.
+     *
+     * @param Builder $query The query builder
+     * @param string $key The filter key (e.g., 'created_at_from')
+     * @param mixed $value The filter value
+     * @return void
      */
-    protected function applyDateFilter(Builder $query, string $key, $value): void
+    protected function applyDateFilter(Builder $query, string $key, mixed $value): void
     {
         // Validate date format before using in query
         if (!$this->isValidDate($value)) {
@@ -250,23 +449,36 @@ abstract class ApiController extends Controller
         }
 
         // Handle created_at_from and created_at_to
-        if (str_ends_with($key, '_from') && $value) {
-            $column = str_replace('_from', '', $key);
+        if (str_ends_with($key, self::SUFFIX_FROM) && $value) {
+            $column = str_replace(self::SUFFIX_FROM, '', $key);
             $query->whereDate($column, '>=', $value);
         }
-        elseif (str_ends_with($key, '_to') && $value) {
-            $column = str_replace('_to', '', $key);
+        elseif (str_ends_with($key, self::SUFFIX_TO) && $value) {
+            $column = str_replace(self::SUFFIX_TO, '', $key);
             $query->whereDate($column, '<=', $value);
         }
     }
 
     /**
-     * Apply individual filter with support for operators
+     * Apply individual filter with support for various operators.
+     *
+     * Supports:
+     * - Exact match
+     * - IN queries (arrays)
+     * - Range filters (min/max)
+     * - Boolean values
+     * - Null checks
+     * - Date ranges
+     *
+     * @param Builder $query The query builder
+     * @param string $key The filter key
+     * @param mixed $value The filter value
+     * @return void
      */
-    protected function applyFilter(Builder $query, string $key, $value): void
+    protected function applyFilter(Builder $query, string $key, mixed $value): void
     {
         // Handle date range filters first
-        if (str_ends_with($key, '_from') || str_ends_with($key, '_to')) {
+        if (str_ends_with($key, self::SUFFIX_FROM) || str_ends_with($key, self::SUFFIX_TO)) {
             $this->applyDateFilter($query, $key, $value);
             return;
         }
@@ -274,19 +486,19 @@ abstract class ApiController extends Controller
         // Handle array values for IN queries
         if (is_array($value)) {
             // Check if it's a range filter (min/max)
-            if (isset($value['min']) && isset($value['max'])) {
-                $query->whereBetween($key, [$value['min'], $value['max']]);
+            if (isset($value[self::SUFFIX_MIN]) && isset($value[self::SUFFIX_MAX])) {
+                $query->whereBetween($key, [$value[self::SUFFIX_MIN], $value[self::SUFFIX_MAX]]);
                 return;
             }
 
             // Support partial range filters
-            if (isset($value['min'])) {
-                $query->where($key, '>=', $value['min']);
+            if (isset($value[self::SUFFIX_MIN])) {
+                $query->where($key, '>=', $value[self::SUFFIX_MIN]);
                 return;
             }
 
-            if (isset($value['max'])) {
-                $query->where($key, '<=', $value['max']);
+            if (isset($value[self::SUFFIX_MAX])) {
+                $query->where($key, '<=', $value[self::SUFFIX_MAX]);
                 return;
             }
 
@@ -296,19 +508,19 @@ abstract class ApiController extends Controller
         }
 
         // Handle boolean filters - support multiple formats
-        if (in_array($value, ['true', 'false', '1', '0', 1, 0, true, false], true)) {
-            $boolValue = in_array($value, ['true', '1', 1, true], true);
+        if (in_array($value, [self::VALUE_TRUE, self::VALUE_FALSE, '1', '0', 1, 0, true, false], true)) {
+            $boolValue = in_array($value, [self::VALUE_TRUE, '1', 1, true], true);
             $query->where($key, $boolValue);
             return;
         }
 
         // Handle null values - separate from empty string
-        if ($value === 'null') {
+        if ($value === self::VALUE_NULL) {
             $query->whereNull($key);
             return;
         }
 
-        if ($value === 'not_null') {
+        if ($value === self::VALUE_NOT_NULL) {
             $query->whereNotNull($key);
             return;
         }
@@ -324,7 +536,13 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Check if a field is filterable
+     * Check if a field is allowed for filtering.
+     *
+     * Security check to prevent unauthorized field access.
+     * If no filterable fields defined, denies all for security.
+     *
+     * @param string $field The field name to check
+     * @return bool True if field is filterable, false otherwise
      */
     protected function isFilterable(string $field): bool
     {
@@ -334,18 +552,31 @@ abstract class ApiController extends Controller
         }
 
         // Remove suffixes like _from, _to, [min], [max] for validation
-        $baseField = preg_replace('/(_from|_to)$/', '', $field);
+        $baseField = preg_replace('/' . self::SUFFIX_FROM . '|' . self::SUFFIX_TO . '$/', '', $field);
         $baseField = preg_replace('/\[.*\]/', '', $baseField);
 
         return in_array($baseField, $this->filterableFields, true);
     }
 
     /**
-     * Apply filters to query
+     * Apply all filters from request to query.
+     *
+     * Only applies filters for fields in the $filterableFields whitelist.
+     *
+     * @param Builder $query The query builder
+     * @param Request $request The HTTP request
+     * @return Builder The modified query builder
      */
     protected function applyFilters(Builder $query, Request $request): Builder
     {
-        $filters = $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page', 'all']);
+        $filters = $request->except([
+            self::PARAM_SEARCH,
+            self::PARAM_SORT_BY,
+            self::PARAM_SORT_DIRECTION,
+            self::PARAM_PER_PAGE,
+            self::PARAM_PAGE,
+            self::PARAM_ALL
+        ]);
 
         foreach ($filters as $key => $value) {
             if ($value === null) {
@@ -364,7 +595,14 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Validate if a column is allowed for sorting
+     * Validate if a column is allowed for sorting.
+     *
+     * Uses whitelist approach for security.
+     * Only allows sorting by searchable fields, filterable fields,
+     * and standard timestamp columns.
+     *
+     * @param string $column The column name to validate
+     * @return bool True if column is allowed for sorting, false otherwise
      */
     protected function validateSortColumn(string $column): bool
     {
@@ -379,15 +617,22 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Apply sorting to query
+     * Apply sorting to query.
+     *
+     * Validates sort column against whitelist to prevent SQL injection.
+     * Falls back to default sort if invalid column provided.
+     *
+     * @param Builder $query The query builder
+     * @param Request $request The HTTP request
+     * @return Builder The modified query builder
      */
     protected function applySorting(Builder $query, Request $request): Builder
     {
-        $sortBy = $request->get('sort_by', $this->defaultSort);
-        $sortDirection = $request->get('sort_direction', $this->defaultDirection);
+        $sortBy = $request->get(self::PARAM_SORT_BY, $this->defaultSort);
+        $sortDirection = $request->get(self::PARAM_SORT_DIRECTION, $this->defaultDirection);
 
         // Validate sort direction
-        $sortDirection = in_array(strtolower($sortDirection), ['asc', 'desc'])
+        $sortDirection = in_array(strtolower($sortDirection), [self::SORT_ASC, self::SORT_DESC])
             ? $sortDirection
             : $this->defaultDirection;
 
@@ -408,12 +653,19 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Paginate results with dynamic per_page
+     * Paginate query results.
+     *
+     * Always paginates by default for security (prevents DoS attacks).
+     * Requires explicit authorization to fetch all records.
+     *
+     * @param Builder $query The query builder
+     * @param Request $request The HTTP request
+     * @return LengthAwarePaginator|Collection The paginated or complete results
      */
     protected function paginateResults(Builder $query, Request $request): LengthAwarePaginator|Collection
     {
         // Check for explicit 'all' request with authorization
-        if ($request->boolean('all', false)) {
+        if ($request->boolean(self::PARAM_ALL, false)) {
             if ($this->canRequestAllRecords($request)) {
                 return $query->get();
             }
@@ -427,17 +679,22 @@ abstract class ApiController extends Controller
 
         // Always paginate for security (prevent DoS attacks)
         $perPage = $this->getPerPage($request);
-        $page = $request->get('page', 1);
+        $page = $request->get(self::PARAM_PAGE, 1);
 
         return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
     /**
-     * Get per_page value from request with validation
+     * Get per_page value from request with validation.
+     *
+     * Ensures per_page doesn't exceed maximum allowed.
+     *
+     * @param Request $request The HTTP request
+     * @return int The validated per_page value
      */
     protected function getPerPage(Request $request): int
     {
-        $perPage = $request->get('per_page', $this->defaultPerPage);
+        $perPage = $request->get(self::PARAM_PER_PAGE, $this->defaultPerPage);
 
         // Convert to integer
         $perPage = (int) $perPage;
@@ -452,7 +709,26 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Transform data before returning (can be overridden in child controllers)
+     * Transform data before returning.
+     *
+     * Override this method in child controllers to transform results
+     * (e.g., using API Resources or custom formatters).
+     *
+     * @param LengthAwarePaginator|Collection $results The query results
+     * @param Request $request The HTTP request
+     * @return array The transformed data
+     *
+     * @example
+     * ```php
+     * protected function transformIndexData($results, Request $request): array
+     * {
+     *     $items = $results instanceof LengthAwarePaginator
+     *         ? $results->items()
+     *         : $results->toArray();
+     *
+     *     return ProductResource::collection($items)->resolve();
+     * }
+     * ```
      */
     protected function transformIndexData(LengthAwarePaginator|Collection $results, Request $request): array
     {
@@ -460,7 +736,12 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Get success message for index (can be overridden)
+     * Get success message for index response.
+     *
+     * Override this method to customize the response message.
+     *
+     * @param LengthAwarePaginator|Collection $results The query results
+     * @return string The success message
      */
     protected function getIndexMessage(LengthAwarePaginator|Collection $results): string
     {
@@ -479,7 +760,13 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Get meta data for index response
+     * Get metadata for index response.
+     *
+     * Includes pagination info and applied filters.
+     *
+     * @param LengthAwarePaginator|Collection $results The query results
+     * @param Request $request The HTTP request
+     * @return array The metadata array
      */
     protected function getIndexMeta(LengthAwarePaginator|Collection $results, Request $request): array
     {
@@ -496,10 +783,17 @@ abstract class ApiController extends Controller
                     'to' => $results->lastItem(),
                 ],
                 'filters' => [
-                    'search' => $request->get('search'),
-                    'sort_by' => $request->get('sort_by', $this->defaultSort),
-                    'sort_direction' => $request->get('sort_direction', $this->defaultDirection),
-                    'applied_filters' => $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page', 'all']),
+                    self::PARAM_SEARCH => $request->get(self::PARAM_SEARCH),
+                    self::PARAM_SORT_BY => $request->get(self::PARAM_SORT_BY, $this->defaultSort),
+                    self::PARAM_SORT_DIRECTION => $request->get(self::PARAM_SORT_DIRECTION, $this->defaultDirection),
+                    'applied_filters' => $request->except([
+                        self::PARAM_SEARCH,
+                        self::PARAM_SORT_BY,
+                        self::PARAM_SORT_DIRECTION,
+                        self::PARAM_PER_PAGE,
+                        self::PARAM_PAGE,
+                        self::PARAM_ALL
+                    ]),
                 ]
             ];
         }
@@ -507,16 +801,33 @@ abstract class ApiController extends Controller
         // For non-paginated results (all data) - no pagination metadata
         return [
             'filters' => [
-                'search' => $request->get('search'),
-                'sort_by' => $request->get('sort_by', $this->defaultSort),
-                'sort_direction' => $request->get('sort_direction', $this->defaultDirection),
-                'applied_filters' => $request->except(['search', 'sort_by', 'sort_direction', 'per_page', 'page', 'all']),
+                self::PARAM_SEARCH => $request->get(self::PARAM_SEARCH),
+                self::PARAM_SORT_BY => $request->get(self::PARAM_SORT_BY, $this->defaultSort),
+                self::PARAM_SORT_DIRECTION => $request->get(self::PARAM_SORT_DIRECTION, $this->defaultDirection),
+                'applied_filters' => $request->except([
+                    self::PARAM_SEARCH,
+                    self::PARAM_SORT_BY,
+                    self::PARAM_SORT_DIRECTION,
+                    self::PARAM_PER_PAGE,
+                    self::PARAM_PAGE,
+                    self::PARAM_ALL
+                ]),
             ]
         ];
     }
 
+    // ========================================
+    // Response Helper Methods
+    // ========================================
+
     /**
-     * Return success response
+     * Return a success JSON response.
+     *
+     * @param string $message Success message
+     * @param mixed $data Response data
+     * @param array|null $meta Additional metadata
+     * @param int $statusCode HTTP status code (default: 200)
+     * @return JsonResponse
      */
     protected function success(
         string $message = 'Operation successful',
@@ -528,7 +839,13 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Return error response
+     * Return an error JSON response.
+     *
+     * @param string $message Error message
+     * @param array|null $errors Validation or detailed errors
+     * @param int $statusCode HTTP status code (default: 400)
+     * @param array|null $meta Additional metadata
+     * @return JsonResponse
      */
     protected function error(
         string $message = 'An error occurred',
@@ -540,7 +857,11 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Return created response
+     * Return a 201 Created response.
+     *
+     * @param string $message Success message
+     * @param mixed $data Created resource data
+     * @return JsonResponse
      */
     protected function created(
         string $message = 'Resource created successfully',
@@ -550,7 +871,10 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Return no content response
+     * Return a 204 No Content response.
+     *
+     * @param string $message Success message
+     * @return JsonResponse
      */
     protected function noContent(
         string $message = 'No content'
@@ -559,10 +883,15 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Return paginated response
+     * Return a paginated JSON response.
+     *
+     * @param mixed $paginator Laravel paginator instance
+     * @param string $message Success message
+     * @param array|null $additionalMeta Additional metadata
+     * @return JsonResponse
      */
     protected function paginated(
-        $paginator,
+        mixed $paginator,
         string $message = 'Data retrieved successfully',
         ?array $additionalMeta = null
     ): JsonResponse {
@@ -570,7 +899,11 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Return validation error response
+     * Return a 422 Validation Error response.
+     *
+     * @param string $message Error message
+     * @param array|null $errors Validation errors
+     * @return JsonResponse
      */
     protected function validationError(
         string $message = 'Validation failed',
@@ -580,7 +913,10 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Return not found response
+     * Return a 404 Not Found response.
+     *
+     * @param string $message Error message
+     * @return JsonResponse
      */
     protected function notFound(
         string $message = 'Resource not found'
@@ -589,7 +925,10 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Return unauthorized response
+     * Return a 401 Unauthorized response.
+     *
+     * @param string $message Error message
+     * @return JsonResponse
      */
     protected function unauthorized(
         string $message = 'Unauthorized access'
@@ -598,7 +937,10 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Return forbidden response
+     * Return a 403 Forbidden response.
+     *
+     * @param string $message Error message
+     * @return JsonResponse
      */
     protected function forbidden(
         string $message = 'Access forbidden'
@@ -606,8 +948,22 @@ abstract class ApiController extends Controller
         return $this->error($message, null, 403);
     }
 
+    // ========================================
+    // Business Logic Helper Methods (DEPRECATED)
+    // ========================================
+    // These methods are deprecated. Use the HasPermissions and
+    // HasBranchFiltering traits instead for better code organization.
+    // ========================================
+
     /**
-     * Check if user has permission
+     * Check if user has permission.
+     *
+     * @deprecated Use HasPermissions trait instead
+     * @see \Masum\ApiController\Traits\HasPermissions
+     *
+     * @param string $action Action to check
+     * @param string $resource Resource to check
+     * @return bool
      */
     protected function hasPermission(string $action, string $resource): bool
     {
@@ -616,7 +972,13 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Check if user can access specific branch
+     * Check if user can access specific branch.
+     *
+     * @deprecated Use HasBranchFiltering trait instead
+     * @see \Masum\ApiController\Traits\HasBranchFiltering
+     *
+     * @param int $branchId Branch ID to check
+     * @return bool
      */
     protected function canAccessBranch(int $branchId): bool
     {
@@ -625,26 +987,40 @@ abstract class ApiController extends Controller
     }
 
     /**
-     * Get authenticated user
+     * Get authenticated user.
+     *
+     * @return \Illuminate\Contracts\Auth\Authenticatable|null
      */
-    protected function getUser()
+    protected function getUser(): mixed
     {
         return \Illuminate\Support\Facades\Auth::user();
     }
 
     /**
-     * Get user's branch ID
+     * Get user's branch ID.
+     *
+     * @deprecated Use HasBranchFiltering trait instead
+     * @see \Masum\ApiController\Traits\HasBranchFiltering
+     *
+     * @return int|null
      */
-    protected function getUserBranchId()
+    protected function getUserBranchId(): ?int
     {
         $user = $this->getUser();
         return $user ? $user->employee->branch_id ?? null : null;
     }
 
     /**
-     * Apply branch filter to query
+     * Apply branch filter to query.
+     *
+     * @deprecated Use HasBranchFiltering trait instead
+     * @see \Masum\ApiController\Traits\HasBranchFiltering
+     *
+     * @param Builder $query Query builder
+     * @param string $branchColumn Branch column name
+     * @return Builder
      */
-    protected function applyBranchFilter($query, string $branchColumn = 'branch_id')
+    protected function applyBranchFilter(Builder $query, string $branchColumn = 'branch_id'): Builder
     {
         $user = $this->getUser();
 

@@ -1,13 +1,31 @@
 {
     "name": "masum/laravel-api-controller",
     "description": "A powerful Laravel API controller base class with dynamic filtering, searching, sorting, pagination, and standardized JSON responses",
-    "keywords": ["laravel", "api", "controller", "rest", "filtering", "search", "pagination", "json-api"],
+    "keywords": [
+        "laravel",
+        "api",
+        "controller",
+        "rest",
+        "restful",
+        "filtering",
+        "search",
+        "sorting",
+        "pagination",
+        "json-api",
+        "api-resources",
+        "eloquent",
+        "query-builder",
+        "laravel-10",
+        "laravel-11",
+        "laravel-12",
+        "php-8"
+    ],
     "type": "library",
     "license": "MIT",
     "authors": [
         {
-            "name": "Masum",
-            "email": "masum@example.com"
+            "name": "Masum Nishat",
+            "email": "contact@example.com"
         }
     ],
     "homepage": "https://github.com/masum/laravel-api-controller",
@@ -25,7 +43,10 @@
     },
     "require-dev": {
         "orchestra/testbench": "^8.0|^9.0",
-        "phpunit/phpunit": "^10.0"
+        "phpunit/phpunit": "^10.0",
+        "phpstan/phpstan": "^1.10",
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "mockery/mockery": "^1.5"
     },
     "autoload": {
         "psr-4": {
@@ -46,6 +67,18 @@
                 "Masum\\ApiController\\ApiControllerServiceProvider"
             ]
         }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test-coverage": "vendor/bin/phpunit --coverage-html coverage",
+        "analyse": "vendor/bin/phpstan analyse",
+        "format": "vendor/bin/php-cs-fixer fix",
+        "format-check": "vendor/bin/php-cs-fixer fix --dry-run --diff",
+        "all-checks": [
+            "@test",
+            "@analyse",
+            "@format-check"
+        ]
     },
     "minimum-stability": "dev",
     "prefer-stable": true

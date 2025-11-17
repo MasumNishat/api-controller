@@ -76,7 +76,7 @@ class ApiResponse
             'success' => $this->success,
             'message' => $this->message,
             'data' => $this->data,
-            'timestamp' => now()->toISOString(),
+            'timestamp' => $this->formatTimestamp(),
         ];
 
         // Add version if configured
@@ -93,6 +93,28 @@ class ApiResponse
         }
 
         return $response;
+    }
+
+    /**
+     * Format timestamp according to configuration.
+     *
+     * Supports multiple timestamp formats:
+     * - iso8601: ISO 8601 format (default)
+     * - unix: Unix timestamp (seconds since epoch)
+     * - custom: Custom format defined in config
+     *
+     * @return string|int The formatted timestamp
+     */
+    protected function formatTimestamp(): string|int
+    {
+        $format = config('api-controller.response.timestamp_format', 'iso8601');
+
+        return match($format) {
+            'iso8601' => now()->toISOString(),
+            'unix' => now()->timestamp,
+            'custom' => now()->format(config('api-controller.response.custom_timestamp_format', 'Y-m-d H:i:s')),
+            default => now()->toISOString(),
+        };
     }
 
     public function toJsonResponse(): JsonResponse

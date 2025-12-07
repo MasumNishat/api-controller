@@ -1,20 +1,44 @@
 <?php
 
-namespace Masum\ApiController\Controllers;
+namespace Masum\QueryController\Controllers;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Routing\Controller;
+use Illuminate\Contracts\Support\Responsable;
+use Masum\QueryController\Managers\ResponseManager;
 
-abstract class ApiController extends Controller
+/**
+ * Base controller for handling both API and web requests with automatic
+ * filtering, searching, sorting, and pagination capabilities.
+ *
+ * This controller can return:
+ * - JSON responses (for APIs)
+ * - Blade views (for traditional web apps)
+ * - Inertia.js responses (for SPAs)
+ * - Livewire components (for reactive apps)
+ */
+abstract class ResourceController extends Controller
 {
+    /**
+     * Response manager instance
+     */
+    protected ?ResponseManager $responseManager = null;
+
     /**
      * The model instance for querying
      */
     protected $model;
+
+    /**
+     * API Resource class for transforming data
+     * @var string|null
+     */
+    protected ?string $resource = null;
 
     /**
      * Fields that can be searched
@@ -53,9 +77,30 @@ abstract class ApiController extends Controller
     protected int $defaultPerPage = 15;
 
     /**
+     * View path for Blade templates (optional)
+     * Example: 'products.index' or 'admin.products.list'
+     * @var string|null
+     */
+    protected ?string $indexView = null;
+
+    /**
+     * Inertia component path (optional)
+     * Example: 'Products/Index' or 'Admin/Products/List'
+     * @var string|null
+     */
+    protected ?string $indexInertiaComponent = null;
+
+    /**
+     * Livewire component class (optional)
+     * Example: 'products.index' or App\Http\Livewire\Products\Index::class
+     * @var string|null
+     */
+    protected ?string $indexLivewireComponent = null;
+
+    /**
      * Common index method implementation
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): JsonResponse|Response|Responsable
     {
         return $this->handleIndexRequest($request);
     }
@@ -87,7 +132,7 @@ abstract class ApiController extends Controller
     /**
      * Common search and filter method for index endpoints
      */
-    protected function handleIndexRequest(Request $request, ?Builder $query = null): JsonResponse
+    protected function handleIndexRequest(Request $request, ?Builder $query = null): JsonResponse|Response|Responsable
     {
         try {
             // Use provided query or create new one from model
@@ -110,6 +155,17 @@ abstract class ApiController extends Controller
             // Transform results if needed
             $data = $this->transformIndexData($results, $request);
 
+            // Determine if we should return a view or JSON response
+            $viewPath = $this->determineViewPath($request);
+
+            if ($viewPath && !$request->expectsJson()) {
+                // Return view response (Blade, Inertia, or Livewire)
+                return $this->response()
+                    ->view($viewPath)
+                    ->paginated($results, $this->getIndexMessage($results), $this->getIndexMeta($results, $request));
+            }
+
+            // Return JSON API response
             return $this->success(
                 $this->getIndexMessage($results),
                 $data,
@@ -123,6 +179,25 @@ abstract class ApiController extends Controller
                 500
             );
         }
+    }
+
+    /**
+     * Determine which view path to use based on configuration and request type
+     */
+    protected function determineViewPath(Request $request): ?string
+    {
+        // Check for Inertia request
+        if ($request->header('X-Inertia') && $this->indexInertiaComponent) {
+            return $this->indexInertiaComponent;
+        }
+
+        // Check for Livewire component
+        if ($this->indexLivewireComponent) {
+            return $this->indexLivewireComponent;
+        }
+
+        // Default to Blade view
+        return $this->indexView;
     }
 
     /**
@@ -312,6 +387,16 @@ abstract class ApiController extends Controller
      */
     protected function transformIndexData(LengthAwarePaginator|Collection $results, Request $request): array
     {
+        // Only apply API Resource transformation for JSON API requests
+        // For web views (Blade/Inertia/Livewire), pass raw Eloquent models
+        if ($this->resource && $request->expectsJson()) {
+            $items = $results instanceof LengthAwarePaginator ? $results->items() : $results;
+
+            // Use resource collection
+            return $this->resource::collection($items)->resolve();
+        }
+
+        // Default transformation - return raw models for web views
         return $results instanceof LengthAwarePaginator ? $results->items() : $results->toArray();
     }
 
@@ -372,6 +457,24 @@ abstract class ApiController extends Controller
     }
 
     /**
+     * Get or create response manager instance
+     */
+    protected function response(): ResponseManager
+    {
+        if ($this->responseManager === null) {
+            $formatterClass = config(
+                'api-controller.formatter',
+                \Masum\QueryController\Formatters\DefaultFormatter::class
+            );
+
+            $formatter = app($formatterClass);
+            $this->responseManager = new ResponseManager($formatter);
+        }
+
+        return $this->responseManager;
+    }
+
+    /**
      * Return success response
      */
     protected function success(
@@ -379,8 +482,8 @@ abstract class ApiController extends Controller
         mixed $data = null,
         ?array $meta = null,
         int $statusCode = 200
-    ): JsonResponse {
-        return success_response($message, $data, $meta, $statusCode);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->success($message, $data, $meta, $statusCode);
     }
 
     /**
@@ -391,8 +494,8 @@ abstract class ApiController extends Controller
         ?array $errors = null,
         int $statusCode = 400,
         ?array $meta = null
-    ): JsonResponse {
-        return error_response($message, $errors, $statusCode, $meta);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->error($message, $errors, $statusCode, $meta);
     }
 
     /**
@@ -401,8 +504,8 @@ abstract class ApiController extends Controller
     protected function created(
         string $message = 'Resource created successfully',
         mixed $data = null
-    ): JsonResponse {
-        return $this->success($message, $data, null, 201);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->created($message, $data);
     }
 
     /**
@@ -410,8 +513,8 @@ abstract class ApiController extends Controller
      */
     protected function noContent(
         string $message = 'No content'
-    ): JsonResponse {
-        return $this->success($message, null, null, 204);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->noContent($message);
     }
 
     /**
@@ -421,8 +524,8 @@ abstract class ApiController extends Controller
         $paginator,
         string $message = 'Data retrieved successfully',
         ?array $additionalMeta = null
-    ): JsonResponse {
-        return paginated_response($paginator, $message, $additionalMeta);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->paginated($paginator, $message, $additionalMeta);
     }
 
     /**
@@ -431,8 +534,8 @@ abstract class ApiController extends Controller
     protected function validationError(
         string $message = 'Validation failed',
         ?array $errors = null
-    ): JsonResponse {
-        return $this->error($message, $errors, 422);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->validationError($message, $errors);
     }
 
     /**
@@ -440,8 +543,8 @@ abstract class ApiController extends Controller
      */
     protected function notFound(
         string $message = 'Resource not found'
-    ): JsonResponse {
-        return $this->error($message, null, 404);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->notFound($message);
     }
 
     /**
@@ -449,8 +552,8 @@ abstract class ApiController extends Controller
      */
     protected function unauthorized(
         string $message = 'Unauthorized access'
-    ): JsonResponse {
-        return $this->error($message, null, 401);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->unauthorized($message);
     }
 
     /**
@@ -458,26 +561,8 @@ abstract class ApiController extends Controller
      */
     protected function forbidden(
         string $message = 'Access forbidden'
-    ): JsonResponse {
-        return $this->error($message, null, 403);
-    }
-
-    /**
-     * Check if user has permission
-     */
-    protected function hasPermission(string $action, string $resource): bool
-    {
-        $user = \Illuminate\Support\Facades\Auth::user();
-        return $user && $user->hasPermission($action, $resource);
-    }
-
-    /**
-     * Check if user can access specific branch
-     */
-    protected function canAccessBranch(int $branchId): bool
-    {
-        $user = \Illuminate\Support\Facades\Auth::user();
-        return $user && $user->canAccessBranch($branchId);
+    ): JsonResponse|Response|Responsable {
+        return $this->response()->forbidden($message);
     }
 
     /**
@@ -486,42 +571,5 @@ abstract class ApiController extends Controller
     protected function getUser()
     {
         return \Illuminate\Support\Facades\Auth::user();
-    }
-
-    /**
-     * Get user's branch ID
-     */
-    protected function getUserBranchId()
-    {
-        $user = $this->getUser();
-        return $user ? $user->employee->branch_id ?? null : null;
-    }
-
-    /**
-     * Apply branch filter to query
-     */
-    protected function applyBranchFilter($query, string $branchColumn = 'branch_id')
-    {
-        $user = $this->getUser();
-
-        // If user is not super admin, filter by their branch
-        if ($user && method_exists($user, 'isSuperAdmin')) {
-            try {
-                if (!$user->isSuperAdmin()) {
-                    $branchId = $this->getUserBranchId();
-                    if ($branchId) {
-                        $query->where($branchColumn, $branchId);
-                    }
-                }
-            } catch (\Exception $e) {
-                // If there's an error checking super admin status, apply branch filter
-                $branchId = $this->getUserBranchId();
-                if ($branchId) {
-                    $query->where($branchColumn, $branchId);
-                }
-            }
-        }
-
-        return $query;
     }
 }

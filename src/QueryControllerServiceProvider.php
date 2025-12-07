@@ -1,10 +1,10 @@
 <?php
 
-namespace Masum\ApiController;
+namespace Masum\QueryController;
 
 use Illuminate\Support\ServiceProvider;
 
-class ApiControllerServiceProvider extends ServiceProvider
+class QueryControllerServiceProvider extends ServiceProvider
 {
     /**
      * Register services.
@@ -12,8 +12,8 @@ class ApiControllerServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->mergeConfigFrom(
-            __DIR__.'/config/api-controller.php',
-            'api-controller'
+            __DIR__.'/config/query-controller.php',
+            'query-controller'
         );
     }
 
@@ -24,7 +24,7 @@ class ApiControllerServiceProvider extends ServiceProvider
     {
         // Publish config
         $this->publishes([
-            __DIR__.'/config/api-controller.php' => config_path('api-controller.php'),
-        ], 'api-controller-config');
+            __DIR__.'/config/query-controller.php' => config_path('query-controller.php'),
+        ], 'query-controller-config');
     }
 }

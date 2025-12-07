@@ -80,4 +80,73 @@ return [
         'custom_timestamp_format' => 'Y-m-d H:i:s',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Response Formatter
+    |--------------------------------------------------------------------------
+    |
+    | The formatter class to use for structuring API responses.
+    | Available options:
+    |   - \Masum\QueryController\Formatters\DefaultFormatter::class (default)
+    |   - \Masum\QueryController\Formatters\JSendFormatter::class
+    |   - \Masum\QueryController\Formatters\JsonApiFormatter::class
+    |   - Your custom formatter implementing ResponseFormatterInterface
+    |
+    */
+
+    'formatter' => env(
+        'API_RESPONSE_FORMATTER',
+        \Masum\QueryController\Formatters\DefaultFormatter::class
+    ),
+
+    /*
+    |--------------------------------------------------------------------------
+    | JSend Formatter Options
+    |--------------------------------------------------------------------------
+    |
+    | Configuration specific to JSend formatter.
+    |
+    */
+
+    'jsend' => [
+        'include_message' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | JSON:API Formatter Options
+    |--------------------------------------------------------------------------
+    |
+    | Configuration specific to JSON:API formatter.
+    |
+    */
+
+    'jsonapi' => [
+        'include_message' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | View Support
+    |--------------------------------------------------------------------------
+    |
+    | Enable view rendering support for controllers that want to return
+    | HTML views instead of JSON responses. Useful for Inertia.js, Livewire,
+    | or traditional Blade views.
+    |
+    */
+
+    'views' => [
+        'enabled' => env('API_VIEWS_ENABLED', false),
+
+        // Default view path prefix for automatic view resolution
+        'path_prefix' => 'api',
+
+        // Auto-detect Inertia requests
+        'inertia_enabled' => true,
+
+        // Auto-detect Livewire components
+        'livewire_enabled' => true,
+    ],
+
 ];

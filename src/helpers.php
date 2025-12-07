@@ -1,8 +1,8 @@
 <?php
 
-use Masum\ApiController\Responses\ApiResponse;
-use Masum\ApiController\Responses\SuccessResponse;
-use Masum\ApiController\Responses\ErrorResponse;
+use Masum\QueryController\Responses\ApiResponse;
+use Masum\QueryController\Responses\SuccessResponse;
+use Masum\QueryController\Responses\ErrorResponse;
 use Illuminate\Http\JsonResponse;
 
 if (!function_exists('api_response')) {

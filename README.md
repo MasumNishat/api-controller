@@ -1,132 +1,124 @@
-# Laravel API Controller Package
+# Laravel Query Controller
 
-A powerful Laravel package providing a feature-rich base API controller with dynamic filtering, searching, sorting, pagination, and standardized JSON responses. Build RESTful APIs faster with consistent response formatting and advanced query capabilities.
+A powerful Laravel base controller with advanced query capabilities for building APIs and web applications faster.
 
-## Features
+**Key Features:**
+- 🔍 Dynamic filtering, searching, sorting & pagination
+- 📦 Multiple response formats (Default, JSend, JSON:API)
+- 🎨 Support for JSON APIs, Blade views, Inertia.js & Livewire
+- 💎 Laravel API Resources support (automatic data transformation)
+- ⚡ Hybrid controllers (API + Web in one)
+- 🔧 Highly customizable and extensible
 
-- **Dynamic Filtering**: Filter by any field with support for:
-  - Exact matches
-  - Array values (IN queries)
-  - Range filters (min/max)
-  - Date ranges (_from, _to)
-  - Boolean values
-  - Null/Not null checks
-- **Advanced Search**: Full-text search across multiple fields including relationships
-- **Flexible Sorting**: Sort by any column with configurable defaults
-- **Smart Pagination**: Automatic pagination with configurable per-page limits
-- **Standardized Responses**: Consistent JSON response format across your API
-- **Response Helpers**: Convenient methods for common HTTP responses
-- **Query Hooks**: Extensible query building with multiple override points
-- **Multi-Tenancy Support**: Built-in branch filtering and access control helpers
-- **Configurable**: Extensive configuration options
-- **Helper Functions**: Global helper functions for quick responses
-- **Laravel 10.x & 11.x Support**
-
-## Important Notes
-
-⚠️ **Authorization:** This package does NOT include Laravel's `authorize()` method. You are responsible for implementing your own authorization logic in your controllers. See [Authorization](#authorization) section below.
+---
 
 ## Installation
 
-Install via Composer:
-
 ```bash
-composer require masum/laravel-api-controller
+composer require masum/laravel-query-controller
 ```
 
-Optionally publish the config file:
+Optionally publish the config:
 
 ```bash
-php artisan vendor:publish --tag=api-controller-config
+php artisan vendor:publish --tag=query-controller-config
 ```
+
+---
 
 ## Quick Start
-
-### Basic Usage
-
-Create a controller extending the `ApiController`:
 
 ```php
 <?php
 
 namespace App\Http\Controllers\Api;
 
-use Masum\ApiController\Controllers\ApiController;
+use Masum\QueryController\Controllers\ResourceController;
 use App\Models\Product;
 
-class ProductController extends ApiController
+class ProductController extends ResourceController
 {
     protected $model = Product::class;
-
     protected array $searchableFields = ['name', 'description', 'sku'];
-
-    protected array $filterableFields = ['category_id', 'status', 'price', 'created_at'];
-
-    protected string $defaultSort = 'created_at';
-
-    protected string $defaultDirection = 'desc';
-
-    // The index() method is already implemented in the base class!
+    protected array $filterableFields = ['category_id', 'status', 'price'];
 }
 ```
 
-### API Endpoints
+That's it! Your controller now supports:
 
-**GET /api/products**
-
-The `index()` method automatically supports:
-
-#### Basic Retrieval
-```
-GET /api/products
-```
-
-#### Search
-```
-GET /api/products?search=laptop
-```
-
-#### Filtering
-```
-GET /api/products?category_id=5
-GET /api/products?status=active
-GET /api/products?price[min]=100&price[max]=500
-GET /api/products?created_at_from=2024-01-01&created_at_to=2024-12-31
-```
-
-#### Sorting
-```
-GET /api/products?sort_by=price&sort_direction=asc
-```
-
-#### Pagination
-```
+```bash
+# List with pagination
 GET /api/products?per_page=20&page=2
+
+# Search
+GET /api/products?search=laptop
+
+# Filter
+GET /api/products?category_id=5&status=active
+
+# Sort
+GET /api/products?sort_by=price&sort_direction=asc
+
+# Combine all
+GET /api/products?search=laptop&category_id=5&sort_by=price&per_page=20
 ```
 
-#### Combined
-```
-GET /api/products?search=laptop&category_id=5&sort_by=price&sort_direction=desc&per_page=15
+---
+
+## Response Format
+
+### Default Format
+
+```json
+{
+  "success": true,
+  "message": "Retrieved 10 of 45 records",
+  "data": [...],
+  "timestamp": "2024-10-30T10:30:00Z",
+  "meta": {
+    "pagination": {
+      "current_page": 1,
+      "per_page": 15,
+      "total": 45,
+      "last_page": 3
+    }
+  }
+}
 ```
 
-## Advanced Usage
+### Other Formats
+
+**JSend:**
+```env
+API_RESPONSE_FORMATTER="\Masum\QueryController\Formatters\JSendFormatter"
+```
+
+**JSON:API:**
+```env
+API_RESPONSE_FORMATTER="\Masum\QueryController\Formatters\JsonApiFormatter"
+```
+
+**Custom:**
+```php
+// Implement ResponseFormatterInterface
+'formatter' => \App\Formatters\CustomFormatter::class
+```
+
+---
+
+## Advanced Features
 
 ### Relationship Search
-
-Search across relationships by using dot notation:
 
 ```php
 protected array $searchableFields = [
     'name',
-    'description',
     'category.name',  // Search in related category
-    'brand.name'      // Search in related brand
+    'brand.name'
 ];
 ```
 
 ### Eager Loading
-
-Override `getIndexWith()` to eager load relationships:
 
 ```php
 protected function getIndexWith(): array
@@ -135,611 +127,361 @@ protected function getIndexWith(): array
 }
 ```
 
-### Custom Query Modifications
-
-Override `getBaseIndexQuery()` for custom query logic:
-
-```php
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    return $this->model::query()
-        ->where('status', 'active')
-        ->whereNotNull('published_at');
-}
-```
-
-### Additional Conditions
-
-Override `applyAdditionalConditions()` for request-specific logic:
+### Custom Filtering
 
 ```php
 protected function applyAdditionalConditions(Builder $query, Request $request): Builder
 {
-    if ($request->has('featured')) {
-        $query->where('featured', true);
-    }
-
-    if ($request->user()->isCustomer()) {
-        $query->where('visible_to_customers', true);
+    // Apply tenant filtering
+    if ($user = $this->getUser()) {
+        $query->where('organization_id', $user->organization_id);
     }
 
     return $query;
 }
 ```
 
-### Custom Data Transformation
+### Laravel API Resources
 
-Transform the response data:
+Use Laravel's API Resources for data transformation (recommended):
 
 ```php
-protected function transformIndexData(LengthAwarePaginator|Collection $results, Request $request): array
-{
-    $items = $results instanceof LengthAwarePaginator ? $results->items() : $results->toArray();
+<?php
 
-    return array_map(function ($item) {
-        return [
-            'id' => $item['id'],
-            'name' => $item['name'],
-            'price' => number_format($item['price'], 2),
-            'formatted_date' => $item['created_at']->format('M d, Y'),
-        ];
-    }, $items);
+namespace App\Http\Controllers\Api;
+
+use Masum\QueryController\Controllers\ResourceController;
+use App\Models\Product;
+use App\Http\Resources\ProductResource;
+
+class ProductController extends ResourceController
+{
+    protected $model = Product::class;
+    protected ?string $resource = ProductResource::class;  // Automatic transformation!
+    protected array $searchableFields = ['name', 'sku'];
 }
 ```
 
-## Response Format
+```php
+<?php
 
-All responses follow a standardized format:
+namespace App\Http\Resources;
 
-### Success Response
+use Illuminate\Http\Resources\Json\JsonResource;
 
-```json
+class ProductResource extends JsonResource
 {
-  "success": true,
-  "message": "Retrieved 10 of 45 records",
-  "data": [
+    public function toArray($request): array
     {
-      "id": 1,
-      "name": "Product 1",
-      "price": 99.99
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'slug' => $this->slug,
+            'price' => [
+                'amount' => $this->price,
+                'formatted' => '$' . number_format($this->price, 2),
+            ],
+            'category' => $this->category?->name,
+            'in_stock' => $this->stock > 0,
+            'created_at' => $this->created_at?->toIso8601String(),
+        ];
     }
-  ],
-  "timestamp": "2024-10-30T10:30:00.000000Z",
-  "meta": {
-    "pagination": {
-      "current_page": 1,
-      "per_page": 15,
-      "total": 45,
-      "last_page": 3,
-      "from": 1,
-      "to": 15
-    },
-    "filters": {
-      "search": "laptop",
-      "sort_by": "created_at",
-      "sort_direction": "desc",
-      "applied_filters": {
-        "category_id": "5"
-      }
-    }
-  }
 }
 ```
 
-### Error Response
+### Manual Transformation
 
-```json
+Or override the method for custom transformation:
+
+```php
+protected function transformIndexData($results, Request $request): array
 {
-  "success": false,
-  "message": "Resource not found",
-  "data": null,
-  "errors": null,
-  "timestamp": "2024-10-30T10:30:00.000000Z"
+    $items = $results instanceof LengthAwarePaginator
+        ? $results->items()
+        : $results->toArray();
+
+    return array_map(fn($item) => [
+        'id' => $item['id'],
+        'name' => $item['name'],
+        'formatted_price' => '$' . number_format($item['price'], 2),
+    ], $items);
 }
 ```
 
-## Response Helpers
+---
 
-The base controller provides convenient response methods:
+## View Support
 
-```php
-// Success responses
-return $this->success('Operation successful', $data);
-return $this->created('Resource created', $data);
-return $this->noContent('Deleted successfully');
+The package automatically handles both API and web requests. Just configure the view path:
 
-// Error responses
-return $this->error('Something went wrong');
-return $this->validationError('Invalid input', $errors);
-return $this->notFound('Product not found');
-return $this->unauthorized('Please login');
-return $this->forbidden('Access denied');
-
-// Paginated response
-return $this->paginated($paginator, 'Products retrieved');
-```
-
-## Global Helper Functions
-
-You can also use global helper functions anywhere in your application:
+### Blade Views
 
 ```php
-// Success responses
-return success_response('Success', $data);
-return created_response('Created', $data);
-
-// Error responses
-return error_response('Error occurred');
-return validation_error_response('Validation failed', $errors);
-return not_found_response('Not found');
-return unauthorized_response('Unauthorized');
-return forbidden_response('Forbidden');
-return server_error_response('Server error');
-
-// Paginated response
-return paginated_response($paginator, 'Data retrieved');
-
-// Direct API response builder
-return api_response()
-    ->success(true)
-    ->message('Custom response')
-    ->data($data)
-    ->meta(['custom' => 'meta'])
-    ->statusCode(200)
-    ->toJsonResponse();
+class ProductController extends ResourceController
+{
+    protected $model = Product::class;
+    protected array $searchableFields = ['name', 'sku'];
+    protected ?string $indexView = 'products.index';  // That's it!
+}
 ```
 
-## Filter Examples
+```blade
+{{-- resources/views/products/index.blade.php --}}
+@foreach($data as $product)
+    <div>{{ $product['name'] }}</div>
+@endforeach
 
-### Multiple Values (IN Query)
-
-```
-GET /api/products?category_id[]=1&category_id[]=2&category_id[]=3
-```
-
-### Range Filters
-
-```
-GET /api/products?price[min]=100&price[max]=500
+{{-- Laravel pagination --}}
+{{ $paginator->links() }}
 ```
 
-### Date Range Filters
+### Inertia.js
 
-```
-GET /api/products?created_at_from=2024-01-01&created_at_to=2024-12-31
+```php
+class ProductController extends ResourceController
+{
+    protected $model = Product::class;
+    protected array $searchableFields = ['name', 'sku'];
+    protected ?string $indexInertiaComponent = 'Products/Index';  // Auto-detected!
+}
 ```
 
-### Boolean Filters
+### Livewire
 
+```php
+class ProductController extends ResourceController
+{
+    protected $model = Product::class;
+    protected array $searchableFields = ['name', 'sku'];
+    protected ?string $indexLivewireComponent = 'products.index';  // Auto-detected!
+}
 ```
-GET /api/products?featured=true
-GET /api/products?in_stock=false
+
+### Hybrid (API + Web)
+
+No code needed! The controller automatically:
+- Returns JSON when `Accept: application/json` header is present
+- Returns the configured view for regular web requests
+- All search, filter, sort, and pagination work in both modes!
+
+---
+
+## Filtering
+
+### Exact Match
+```
+?status=active
+```
+
+### Array (IN query)
+```
+?category_id[]=1&category_id[]=2&category_id[]=3
+```
+
+### Range
+```
+?price[min]=100&price[max]=500
+```
+
+### Date Range
+```
+?created_at_from=2024-01-01&created_at_to=2024-12-31
+```
+
+### Boolean
+```
+?featured=true
 ```
 
 ### Null Checks
+```
+?deleted_at=null
+?description=not_null
+```
 
+---
+
+## Response Methods
+
+```php
+// Success responses
+return $this->success('Success', $data);
+return $this->created('Resource created', $data);
+
+// Error responses
+return $this->error('Error occurred', $errors);
+return $this->validationError('Validation failed', $errors);
+return $this->notFound('Resource not found');
+return $this->unauthorized('Access denied');
+return $this->forbidden('Forbidden');
+
+// Paginated
+return $this->paginated($paginator, 'Data retrieved');
 ```
-GET /api/products?deleted_at=null        # Only non-deleted
-GET /api/products?description=not_null   # Only with description
-```
+
+---
 
 ## Configuration
 
-Customize the package behavior in `config/api-controller.php`:
-
 ```php
+// config/query-controller.php
+
 return [
-    // API version to include in responses
-    'version' => '1.0.0',
-    'include_version' => false,
+    // Response formatter
+    'formatter' => \Masum\QueryController\Formatters\DefaultFormatter::class,
 
-    // Sanitize SQL errors for security
-    'sanitize_sql_errors' => true,
-
-    // Pagination defaults
+    // Pagination
     'pagination' => [
         'default_per_page' => 15,
         'max_per_page' => 100,
     ],
 
-    // Sorting defaults
+    // Sorting
     'sorting' => [
         'default_column' => 'created_at',
         'default_direction' => 'desc',
     ],
 
-    // Response format
-    'response' => [
-        'include_timestamp' => true,
-        'timestamp_format' => 'iso8601',
+    // Views
+    'views' => [
+        'enabled' => false,
+        'inertia_enabled' => true,
+        'livewire_enabled' => true,
     ],
 ];
 ```
 
-You can also use environment variables:
-
-```env
-API_VERSION=2.0.0
-API_INCLUDE_VERSION=true
-API_SANITIZE_SQL_ERRORS=true
-API_DEFAULT_PER_PAGE=20
-API_MAX_PER_PAGE=100
-API_DEFAULT_SORT=created_at
-API_DEFAULT_SORT_DIRECTION=desc
-```
-
-## Override Properties Per Controller
-
-Each controller can override the default settings:
+### Per-Controller Overrides
 
 ```php
-class ProductController extends ApiController
+class ProductController extends ResourceController
 {
-    protected $model = Product::class;
     protected int $maxPerPage = 50;
-    protected int $defaultPerPage = 10;
+    protected int $defaultPerPage = 25;
     protected string $defaultSort = 'name';
     protected string $defaultDirection = 'asc';
 }
 ```
 
-## Authorization
+---
 
-⚠️ **Important:** This package does NOT include Laravel's `authorize()` method. You are responsible for implementing your own authorization logic.
-
-### Handling Authorization
-
-If your application uses Laravel policies:
+## Custom Formatter Example
 
 ```php
-public function store(Request $request): JsonResponse
-{
-    // Option 1: Use Laravel's authorize (if available in your base controller)
-    $this->authorize('create', Product::class);
+<?php
 
-    // Option 2: Use Gate facade
-    if (! Gate::allows('create', Product::class)) {
-        return $this->forbidden('You are not authorized to create products');
+namespace App\Formatters;
+
+use Masum\QueryController\Contracts\ResponseFormatterInterface;
+
+class CustomFormatter implements ResponseFormatterInterface
+{
+    public function success($message, $data = null, $meta = null, $statusCode = 200): array
+    {
+        return [
+            'ok' => true,
+            'message' => $message,
+            'payload' => $data,
+            'metadata' => $meta,
+        ];
     }
 
-    // Option 3: Manual check
-    if (! auth()->user()->can('create', Product::class)) {
-        return $this->forbidden('Access denied');
+    public function error($message, $errors = null, $statusCode = 400, $meta = null): array
+    {
+        return [
+            'ok' => false,
+            'error' => $message,
+            'details' => $errors,
+        ];
     }
 
-    // Your logic here...
-}
-```
-
-### Migration Note
-
-When migrating from a local `ApiController` that includes `authorize()`:
-- Comment out all `$this->authorize()` calls, or
-- Implement `authorize()` in your own base controller that extends this package's `ApiController`
-
-## Helper Methods
-
-The package includes several helper methods for common scenarios:
-
-### User & Authentication
-
-```php
-// Get the authenticated user
-$user = $this->getUser();
-
-// Get user's branch ID (for multi-tenancy)
-$branchId = $this->getUserBranchId();
-
-// Check if user is super admin
-if ($this->isSuperAdmin()) {
-    // Allow access to all records
-}
-```
-
-### Multi-Tenancy & Branch Filtering
-
-Perfect for applications with branch-based access control:
-
-```php
-use Illuminate\Database\Eloquent\Builder;
-
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    $query = parent::getBaseIndexQuery($request)
-        ->with(['relationships']);
-
-    // Apply branch filtering automatically
-    return $this->applyBranchFilter($query);
-
-    // Or specify a custom column
-    return $this->applyBranchFilter($query, 'company_branch_id');
-}
-
-// Check if user can access a specific branch
-if (!$this->canAccessBranch($branchId)) {
-    return $this->forbidden('Access denied to this branch');
-}
-```
-
-The `applyBranchFilter()` method:
-- Filters records by user's branch ID
-- Skips filtering for super admins
-- Handles null users gracefully
-- Defaults to 'branch_id' column (customizable)
-
-### Custom Query with handleIndexRequest()
-
-For custom filtering beyond the base query:
-
-```php
-public function activeProducts(Request $request): JsonResponse
-{
-    $query = Product::where('status', 'active')
-        ->where('stock', '>', 0);
-
-    // This applies all standard filtering, searching, sorting, and pagination
-    return $this->handleIndexRequest($request, $query);
-}
-
-public function userTasks(Request $request): JsonResponse
-{
-    $query = Task::where('user_id', auth()->id());
-
-    return $this->handleIndexRequest($request, $query);
-}
-```
-
-## Migrating from Local ApiController
-
-**Note**: As of 2025-10-31, the legacy local `app/Http/Controllers/ApiController.php` has been successfully removed from the Fiber Map v2 project. All 55 controllers have been migrated to use this package.
-
-If you're migrating from your own local `App\Http\Controllers\ApiController`:
-
-### Step-by-Step Migration
-
-**1. Update the import:**
-```php
-// Old
-use App\Http\Controllers\ApiController;
-
-// New
-use Masum\ApiController\Controllers\ApiController;
-use Illuminate\Database\Eloquent\Builder;
-```
-
-**2. Add return type to getBaseIndexQuery():**
-```php
-// Add Builder return type
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    return parent::getBaseIndexQuery($request)->with(['relations']);
-}
-```
-
-**3. Handle authorization:**
-```php
-// Comment out authorize() calls
-// $this->authorize('create', Product::class);
-
-// Or implement your own authorization
-if (!auth()->user()->can('create-products')) {
-    return $this->forbidden('Access denied');
-}
-```
-
-**4. Remove duplicate helper methods:**
-
-If your local controller had these methods, **remove them** (they're now in the package):
-- `getUser()`
-- `getUserBranchId()`
-- `applyBranchFilter()`
-- `canAccessBranch()`
-- `hasPermission()`
-- `isSuperAdmin()`
-
-**5. Update eager loading pattern:**
-```php
-// Old pattern (still works)
-protected function getIndexWith(): array
-{
-    return ['category', 'brand'];
-}
-
-// New pattern (preferred for more control)
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    return parent::getBaseIndexQuery($request)
-        ->with(['category', 'brand', 'tag']);
-}
-```
-
-**6. Align searchable/filterable fields with model:**
-```php
-// Check your model's fillable fields
-protected $fillable = ['name', 'sku', 'price', 'status'];
-
-// Match in controller
-protected array $searchableFields = ['name', 'sku'];
-protected array $filterableFields = [
-    'name',
-    'sku',
-    'price',
-    'status',
-    'created_at',
-    'updated_at',
-];
-```
-
-### Migration Checklist
-
-- [ ] Update namespace imports
-- [ ] Add `Builder` return type to `getBaseIndexQuery()`
-- [ ] Handle/comment out `authorize()` calls
-- [ ] Remove duplicate helper methods
-- [ ] Align searchableFields with model
-- [ ] Align filterableFields with model
-- [ ] Test all CRUD endpoints
-- [ ] Test search and filtering
-- [ ] Test pagination
-- [ ] Verify branch filtering (if applicable)
-
-## Troubleshooting
-
-### Common Issues
-
-**Issue: "Call to undefined method authorize()"**
-
-**Cause:** The package doesn't include Laravel's `authorize()` method.
-
-**Solution:**
-```php
-// Comment out authorize calls
-// $this->authorize('create', Product::class);
-
-// Or implement authorization manually
-if (!Gate::allows('create', Product::class)) {
-    return $this->forbidden('Access denied');
-}
-```
-
----
-
-**Issue: "Attempt to read property 'role_name' on null"**
-
-**Cause:** User object is null when calling helper methods.
-
-**Solution:** The package handles null users defensively in helper methods. Ensure you're using authentication middleware on protected routes:
-```php
-Route::middleware('auth:sanctum')->group(function () {
-    Route::apiResource('products', ProductController::class);
-});
-```
-
----
-
-**Issue: "Call to undefined relationship [tags]"**
-
-**Cause:** Using plural relationship name for morphOne relationships.
-
-**Solution:**
-```php
-// Wrong (for morphOne relationships)
-->with(['tags'])
-
-// Correct (singular for morphOne, plural for morphMany)
-->with(['tag'])
-```
-
----
-
-**Issue: Search not working on relationship fields**
-
-**Cause:** Relationship not eager loaded or incorrect dot notation.
-
-**Solution:**
-```php
-// Ensure relationship is loaded
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    return parent::getBaseIndexQuery($request)
-        ->with(['category']); // Load the relationship
-}
-
-// Use correct dot notation
-protected array $searchableFields = [
-    'name',
-    'category.name', // Matches the relationship name
-];
-```
-
----
-
-**Issue: "Too many SQL queries" (N+1 problem)**
-
-**Cause:** Not eager loading relationships.
-
-**Solution:**
-```php
-protected function getBaseIndexQuery(Request $request): Builder
-{
-    return parent::getBaseIndexQuery($request)
-        ->with([
-            'category',
-            'brand',
-            'images',
-            'reviews' => function ($query) {
-                $query->limit(5); // Limit nested results
-            }
+    public function paginated($paginator, $message, $additionalMeta = null): array
+    {
+        return $this->success($message, $paginator->items(), [
+            'page' => $paginator->currentPage(),
+            'total' => $paginator->total(),
         ]);
+    }
 }
 ```
 
 ---
 
-**Issue: Filters not working**
+## Complete CRUD Example
 
-**Cause:** Field not in `filterableFields` array or model doesn't have the field.
-
-**Solution:**
 ```php
-// Check model's fillable or database columns
-protected array $filterableFields = [
-    'status',           // Must exist in database
-    'category_id',      // Must exist in database
-    'created_at',       // Always available (timestamp)
-    'updated_at',       // Always available (timestamp)
-];
-```
+<?php
 
----
+namespace App\Http\Controllers\Api;
 
-**Issue: Branch filtering not working**
+use Masum\QueryController\Controllers\ResourceController;
+use App\Models\Product;
+use App\Http\Resources\ProductResource;
+use Illuminate\Http\Request;
 
-**Cause:** Not calling `applyBranchFilter()` in `getBaseIndexQuery()`.
-
-**Solution:**
-```php
-protected function getBaseIndexQuery(Request $request): Builder
+class ProductController extends ResourceController
 {
-    $query = parent::getBaseIndexQuery($request)
-        ->with(['relationships']);
+    protected $model = Product::class;
+    protected ?string $resource = ProductResource::class;  // Use Laravel Resources
+    protected array $searchableFields = ['name', 'sku'];
+    protected array $filterableFields = ['category_id', 'status', 'price'];
 
-    // Add branch filtering
-    return $this->applyBranchFilter($query);
+    // index() is inherited - supports search, filter, sort, paginate!
+    // Automatically uses ProductResource for transformation
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string',
+            'price' => 'required|numeric',
+        ]);
+
+        $product = Product::create($validated);
+
+        // Use resource for single item response
+        return $this->created('Product created', new ProductResource($product));
+    }
+
+    public function show(int $id)
+    {
+        $product = Product::with('category')->findOrFail($id);
+
+        // Use resource for single item
+        return $this->success('Product found', new ProductResource($product));
+    }
+
+    public function update(Request $request, int $id)
+    {
+        $product = Product::findOrFail($id);
+        $product->update($request->validated());
+
+        return $this->success('Product updated', new ProductResource($product));
+    }
+
+    public function destroy(int $id)
+    {
+        Product::findOrFail($id)->delete();
+        return $this->success('Product deleted');
+    }
 }
 ```
 
-## Testing
-
-```bash
-composer test
-```
+---
 
 ## Requirements
 
-- PHP 8.1 or higher
-- Laravel 10.x or 11.x
+- PHP 8.1+
+- Laravel 10.x, 11.x, or 12.x
 
-## Use Cases
-
-This package is perfect for:
-
-- Building RESTful APIs with consistent response formats
-- Admin panels with complex filtering and search
-- Mobile app backends
-- Data tables with server-side processing
-- Microservices with standardized responses
-- API-first applications
+---
 
 ## License
 
 MIT License
 
-## Credits
-
-- Masum
-- All Contributors
+---
 
 ## Support
 
-For issues, questions, or contributions, please visit the GitHub repository.
+For issues or questions:
+- GitHub Issues: [https://github.com/masum/laravel-query-controller/issues](https://github.com/masum/laravel-query-controller/issues)

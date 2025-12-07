@@ -1,6 +1,6 @@
 <?php
 
-namespace Masum\ApiController\Responses;
+namespace Masum\QueryController\Responses;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\MessageBag;
@@ -14,7 +14,7 @@ class ErrorResponse
         ?array $meta = null
     ): JsonResponse {
         // Sanitize SQL error messages if configured
-        if (config('api-controller.sanitize_sql_errors', true) && str_contains($message, 'SQLSTATE')) {
+        if (config('query-controller.sanitize_sql_errors', true) && str_contains($message, 'SQLSTATE')) {
             $message = 'Error with your provided data.';
         }
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace Masum\ApiController\Responses;
+namespace Masum\QueryController\Responses;
 
 use Illuminate\Http\JsonResponse;
 

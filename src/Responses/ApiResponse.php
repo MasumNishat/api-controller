@@ -1,6 +1,6 @@
 <?php
 
-namespace Masum\ApiController\Responses;
+namespace Masum\QueryController\Responses;
 
 use Illuminate\Http\JsonResponse;
 
@@ -80,8 +80,8 @@ class ApiResponse
         ];
 
         // Add version if configured
-        if (config('api-controller.include_version', false)) {
-            $response['version'] = config('api-controller.version', '1.0.0');
+        if (config('query-controller.include_version', false)) {
+            $response['version'] = config('query-controller.version', '1.0.0');
         }
 
         if ($this->errors !== null) {

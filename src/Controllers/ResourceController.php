@@ -350,16 +350,11 @@ abstract class ResourceController extends Controller
     /**
      * Paginate results with dynamic per_page
      */
-    protected function paginateResults(Builder $query, Request $request): LengthAwarePaginator|Collection
+    protected function paginateResults(Builder $query, Request $request): LengthAwarePaginator
     {
         $perPage = $this->getPerPage($request);
-
-        // If per_page was not provided in the request, return all results
-        if (!$request->has('per_page')) {
-            return $query->get();
-        }
-
         $page = $request->get('page', 1);
+
         return $query->paginate($perPage, ['*'], 'page', $page);
     }
 
